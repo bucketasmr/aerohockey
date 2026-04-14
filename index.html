@@ -7,10 +7,14 @@
     <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
     <style>
         body { background: #000; color: #fff; text-align: center; font-family: 'Segoe UI', sans-serif; margin: 0; overflow: hidden; touch-action: none; user-select: none; }
-        #menu { padding-top: 50px; height: 100vh; display: flex; flex-direction: column; align-items: center; background: radial-gradient(circle at center, #111 0%, #000 100%); }
+        #menu { padding-top: 50px; height: 100vh; display: flex; flex-direction: column; align-items: center; background: radial-gradient(circle at center, #111 0%, #000 100%); position: relative; }
         .btn { padding: 15px 45px; font-size: 18px; cursor: pointer; margin: 10px; border: none; border-radius: 50px; background: #007aff; color: white; font-weight: bold; box-shadow: 0 4px 15px rgba(0,122,255,0.4); text-transform: uppercase; }
         input, select { padding: 12px; font-size: 16px; border-radius: 12px; border: 2px solid #333; background: #222; color: #fff; outline: none; margin: 5px; }
         
+        /* Переключатель языка */
+        #langSwitcher { position: absolute; top: 10px; right: 10px; z-index: 1000; }
+        #langSelect { padding: 5px 10px; font-size: 12px; border-radius: 8px; background: rgba(255,255,255,0.1); border: 1px solid #444; cursor: pointer; }
+
         #displayId { font-weight: 900; color: #34c759; display: block; transition: all 0.5s ease; }
         .id-large { font-size: 48px; text-shadow: 0 0 20px rgba(52, 199, 89, 0.6); margin: 10px 0; letter-spacing: 5px; }
         .id-small { font-size: 14px; text-shadow: none; margin: 0; opacity: 0.5; letter-spacing: 1px; }
@@ -23,14 +27,22 @@
     </style>
 </head>
 <body>
+    <div id="langSwitcher">
+        <select id="langSelect" onchange="changeLanguage(this.value)">
+            <option value="ru">RU</option>
+            <option value="uk">UA</option>
+            <option value="en">EN</option>
+        </select>
+    </div>
+
     <div id="menu">
         <h1>AIR HOCKEY FX</h1>
-        <div id="status">Загрузка...</div>
+        <div id="status" data-i18n="loading">Загрузка...</div>
         <div id="setupActions" style="display:none;">
-            <button class="btn" onclick="createRoom()">СОЗДАТЬ</button>
+            <button class="btn" onclick="createRoom()" data-i18n="create">СОЗДАТЬ</button>
             <br>
-            <input type="text" id="joinId" placeholder="КОД" maxlength="5">
-            <button class="btn" style="background: #5856d6;" onclick="joinRoom()">ВОЙТИ</button>
+            <input type="text" id="joinId" placeholder="КОД" maxlength="5" data-i18n-placeholder="code">
+            <button class="btn" style="background: #5856d6;" onclick="joinRoom()" data-i18n="join">ВОЙТИ</button>
         </div>
     </div>
 
@@ -52,7 +64,7 @@
                 </select>
             </div>
             <div id="hostControls" style="display:none; margin-top: 10px;">
-                <button class="btn" onclick="sendStartSignal()">СТАРТ</button>
+                <button class="btn" onclick="sendStartSignal()" data-i18n="start">СТАРТ</button>
             </div>
         </div>
         <div id="gameArea">
