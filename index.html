@@ -23,10 +23,13 @@
         <p id="status"></p>
     </div>
 
-    <div id="gameUI" style="display:none;">
-        <p>Ваш ID: <span id="displayId"></span></p>
-        <canvas id="gameCanvas" width="400" height="600"></canvas>
+<div id="gameUI" style="display:none;">
+    <p>Ваш ID: <b id="displayId"></b></p>
+    <div id="hostControls" style="display:none;">
+        <button class="btn" id="startGameBtn" onclick="sendStartSignal()">Начать игру</button>
     </div>
+    <canvas id="gameCanvas" width="400" height="600"></canvas>
+</div>
 
     <script src="game.js"></script>
 </body>
