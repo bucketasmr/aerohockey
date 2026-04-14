@@ -4,26 +4,26 @@ const status = document.getElementById('status');
 const displayId = document.getElementById('displayId');
 const scoreDisplay = document.getElementById('scoreDisplay');
 const skinContainer = document.getElementById('skinSelectorContainer');
+const resetBtn = document.getElementById('resetBtn');
 
 let peer, conn;
 let isHost = false;
 let gameStarted = false;
 
-// Частицы
+// Системы частиц (салюты удалены)
 let ballParticles = [];
 let bgParticles = [];
-let goalFireworks = [];
 
 const skins = [
-    { name: "Classic", bg: "#1a1a1a", wall: "#444", p1: "#007aff", p2: "#ff3b30", ball: "#fff", line: "rgba(255,255,255,0.1)", trailColor: "#888", fx: "none" },
-    { name: "Neon", bg: "#000", wall: "#0ff", p1: "#0f0", p2: "#f0f", ball: "#fff", line: "#0ff", glow: 15, trailColor: "#fff", fx: "neon" },
-    { name: "Retro", bg: "#2b1d42", wall: "#ff71ce", p1: "#01cdfe", p2: "#b967ff", ball: "#fff", line: "#ff71ce", fx: "retro" },
-    { name: "Stadium", bg: "#2d5a27", wall: "#1e3d1a", p1: "#007aff", p2: "#ff3b30", ball: "#fff", line: "rgba(255,255,255,0.4)", trailColor: "rgba(255,255,255,0.5)", fx: "grass" },
-    { name: "Forest", bg: "#0a2f0a", wall: "#2e7d32", p1: "#fb8c00", p2: "#4e342e", ball: "#fff", line: "#4caf50", trailColor: "#a5d6a7", fx: "leaves" },
-    { name: "Tomb", bg: "#1a1100", wall: "#8b4513", p1: "#ffe082", p2: "#3e2723", ball: "#ffeb3b", line: "#6d4c41", glow: 5, trailColor: "#ffd54f", fx: "tomb" },
-    { name: "Lava", bg: "#120000", wall: "#ff4500", p1: "#ffee58", p2: "#b71c1c", ball: "#ff9100", line: "#ff4500", glow: 20, trailColor: "#ff4500", fx: "lava" },
-    { name: "Space", bg: "#050510", wall: "#283593", p1: "#00e5ff", p2: "#d500f9", ball: "#e0e0e0", line: "rgba(255,255,255,0.1)", trailColor: "#fff", fx: "space" },
-    { name: "Cyber", bg: "#020024", wall: "#00ff41", p1: "#fed700", p2: "#ff00a0", ball: "#00ff41", line: "#002b00", glow: 10, trailColor: "#00ff41", fx: "cyber" }
+    { bg: "#1a1a1a", wall: "#444", p1: "#007aff", p2: "#ff3b30", ball: "#fff", line: "rgba(255,255,255,0.1)", trailColor: "#888", fx: "none" },
+    { bg: "#000", wall: "#0ff", p1: "#0f0", p2: "#f0f", ball: "#fff", line: "#0ff", glow: 15, trailColor: "#fff", fx: "neon" },
+    { bg: "#2b1d42", wall: "#ff71ce", p1: "#01cdfe", p2: "#b967ff", ball: "#fff", line: "#ff71ce", fx: "retro" },
+    { bg: "#2d5a27", wall: "#1e3d1a", p1: "#007aff", p2: "#ff3b30", ball: "#fff", line: "rgba(255,255,255,0.4)", trailColor: "rgba(255,255,255,0.5)", fx: "grass" },
+    { bg: "#0a2f0a", wall: "#2e7d32", p1: "#fb8c00", p2: "#4e342e", ball: "#fff", line: "#4caf50", trailColor: "#a5d6a7", fx: "leaves" },
+    { bg: "#1a1100", wall: "#8b4513", p1: "#ffe082", p2: "#3e2723", ball: "#ffeb3b", line: "#6d4c41", glow: 5, trailColor: "#ffd54f", fx: "tomb" },
+    { bg: "#120000", wall: "#ff4500", p1: "#ffee58", p2: "#b71c1c", ball: "#ff9100", line: "#ff4500", glow: 20, trailColor: "#ff4500", fx: "lava" },
+    { bg: "#050510", wall: "#283593", p1: "#00e5ff", p2: "#d500f9", ball: "#e0e0e0", line: "rgba(255,255,255,0.1)", trailColor: "#fff", fx: "space" },
+    { bg: "#020024", wall: "#00ff41", p1: "#fed700", p2: "#ff00a0", ball: "#00ff41", line: "#002b00", glow: 10, trailColor: "#00ff41", fx: "cyber" }
 ];
 
 let game = {
@@ -46,7 +46,7 @@ class Particle {
 }
 
 peer = new Peer();
-peer.on('open', () => { status.innerText = "Система готова"; document.getElementById('setupActions').style.display = 'block'; });
+peer.on('open', () => { status.innerText = "Готов"; document.getElementById('setupActions').style.display = 'block'; });
 
 function changeSkin(val) { if(isHost) game.skin = parseInt(val); bgParticles = []; ballParticles = []; }
 
@@ -58,15 +58,15 @@ function createRoom() {
         peer = new Peer(shortId);
         peer.on('open', id => { 
             showUI(id); 
-            status.innerText = "ОЖИДАНИЕ ИГРОКА..."; 
-            displayId.style.display = 'block';
+            status.innerText = "ЖДЕМ ИГРОКА..."; 
+            resetBtn.style.display = 'block'; // Показываем кнопку сброса только хосту
         });
         peer.on('connection', c => {
             conn = c;
             conn.on('open', () => {
                 document.getElementById('hostControls').style.display = 'block';
                 skinContainer.style.display = 'block';
-                status.innerText = "ИГРОК ПОДКЛЮЧИЛСЯ!";
+                status.innerText = "ИГРОК В СЕТИ!";
                 setupLoops();
             });
         });
@@ -82,42 +82,42 @@ function joinRoom() {
         peer = new Peer();
         peer.on('open', () => {
             conn = peer.connect(id);
-            conn.on('open', () => { 
-                showUI(id); 
-                displayId.style.display = 'none'; // Клиенту код не нужен так крупно
-                status.innerText = "УДАЧИ В БОЮ!"; 
-                setupLoops(); 
-            });
+            conn.on('open', () => { showUI(id); setupLoops(); });
         });
     }, 200);
 }
 
-function showUI(id) { document.getElementById('menu').style.display = 'none'; document.getElementById('gameUI').style.display = 'block'; displayId.innerText = id; }
+function showUI(id) { 
+    document.getElementById('menu').style.display = 'none'; 
+    document.getElementById('gameUI').style.display = 'block'; 
+    displayId.innerText = id; 
+}
 
 function setupLoops() {
     document.getElementById('gameArea').style.display = 'block';
     conn.on('data', data => {
-        if (data.type === 'START') { 
-            gameStarted = true; 
-            status.style.display = 'none'; 
-            displayId.style.display = 'none';
-        }
+        if (data.type === 'START') { setGameStartedUI(); }
         else if (isHost) { game.p2.x = data.x; game.p2.y = 600 - data.y; }
         else {
-            const oldS1 = game.score1, oldS2 = game.score2;
             game = data.state;
             gameStarted = data.started;
-            if(game.score1 > oldS1) spawnGoalExplosion(false); // Для клиента: Хост забил (верх)
-            if(game.score2 > oldS2) spawnGoalExplosion(true);  // Для клиента: Мы забили (низ)
+            if(gameStarted) setGameStartedUI();
         }
     });
     requestAnimationFrame(gameLoop);
 }
 
-function sendStartSignal() {
+function setGameStartedUI() {
     gameStarted = true;
+    status.style.display = 'none';
+    displayId.classList.remove('id-large');
+    displayId.classList.add('id-small');
+    displayId.innerText = "Room ID: " + displayId.innerText.replace("Room ID: ", "");
+}
+
+function sendStartSignal() {
+    setGameStartedUI();
     document.getElementById('hostControls').style.display = 'none';
-    displayId.style.display = 'none';
     setInterval(() => { if(conn && conn.open) conn.send({ type: 'START' }); }, 500);
 }
 
@@ -147,20 +147,12 @@ function update() {
     const gL = 135, gR = 265;
     if (game.ball.y < 16) {
         if (game.ball.x > gL && game.ball.x < gR) {
-            if (game.ball.y < -20) { 
-                game.score1++; 
-                spawnGoalExplosion(false); // Салют в верхних воротах
-                manualBallReset(); 
-            }
+            if (game.ball.y < -20) { game.score1++; manualBallReset(); }
         } else { game.ball.y = 16; game.ball.vy *= -1; }
     }
     if (game.ball.y > 584) {
         if (game.ball.x > gL && game.ball.x < gR) {
-            if (game.ball.y > 620) { 
-                game.score2++; 
-                spawnGoalExplosion(true); // Салют в нижних воротах
-                manualBallReset(); 
-            }
+            if (game.ball.y > 620) { game.score2++; manualBallReset(); }
         } else { game.ball.y = 584; game.ball.vy *= -1; }
     }
 
@@ -178,15 +170,6 @@ function update() {
     if (conn.open) conn.send({ state: game, started: gameStarted });
 }
 
-function spawnGoalExplosion(isBottom) {
-    const s = skins[game.skin] || skins[0];
-    const yPos = isBottom ? 590 : 10;
-    const color = isBottom ? s.p1 : s.p2;
-    for(let i=0; i<40; i++) {
-        goalFireworks.push(new Particle(200, yPos, color, Math.random()*5+2, (Math.random()-0.5)*10, (Math.random()-0.5)*10, 60));
-    }
-}
-
 function drawFX(s) {
     const renderBall = isHost ? game.ball : { x: game.ball.x, y: 600 - game.ball.y };
     const lvx = renderBall.x - lastBallPos.x, lvy = renderBall.y - lastBallPos.y;
@@ -201,7 +184,7 @@ function drawFX(s) {
     if (s.fx === 'lava' && Math.random() > 0.7) bgParticles.push(new Particle(Math.random()*400, 600, '#ff4500', 2, 0, -2, 50, -0.05));
     if (s.fx === 'space' && Math.random() > 0.9) bgParticles.push(new Particle(Math.random()*400, 0, '#fff', 1, 1, 6, 80));
 
-    [bgParticles, ballParticles, goalFireworks].forEach(arr => {
+    [bgParticles, ballParticles].forEach(arr => {
         for(let i=arr.length-1; i>=0; i--) {
             arr[i].update();
             if(arr[i].life <= 0) arr.splice(i, 1);
