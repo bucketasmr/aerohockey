@@ -245,12 +245,17 @@ function draw() {
 
 function gameLoop() { update(); draw(); if (conn && conn.open) requestAnimationFrame(gameLoop); }
 
-function toggleFullscreen() {
-    if (!document.fullscreenElement) {
-        document.documentElement.requestFullscreen().catch(err => {
-            alert(`Error attempting to enable full-screen mode: ${err.message}`);
-        });
+// Исправленная функция Fullscreen
+document.getElementById('fsBtn').addEventListener('click', () => {
+    const doc = window.document;
+    const docEl = doc.documentElement;
+
+    const requestFullScreen = docEl.requestFullscreen || docEl.mozRequestFullScreen || docEl.webkitRequestFullScreen || docEl.msRequestFullscreen;
+    const cancelFullScreen = doc.exitFullscreen || doc.mozCancelFullScreen || doc.webkitExitFullscreen || doc.msExitFullscreen;
+
+    if (!doc.fullscreenElement && !doc.mozFullScreenElement && !doc.webkitFullscreenElement && !doc.msFullscreenElement) {
+        requestFullScreen.call(docEl);
     } else {
-        document.exitFullscreen();
+        cancelFullScreen.call(doc);
     }
-}
+});
