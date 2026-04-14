@@ -8,44 +8,15 @@ let peer, conn, isHost = false, gameStarted = false;
 let ballParticles = [], bgParticles = [], eventsFX = [];
 let lastEventTime = Date.now();
 
-// --- КОНФИГУРАЦИЯ СЕТИ ДЛЯ ГЛОБАЛЬНОЙ ИГРЫ ---
+// Настройка для игры через разные страны (STUN-серверы Google)
 const peerConfig = {
     config: {
         'iceServers': [
             { url: 'stun:stun.l.google.com:19302' },
-            { url: 'stun:stun1.l.google.com:19302' },
-            { url: 'stun:stun2.l.google.com:19302' }
+            { url: 'stun:stun1.l.google.com:19302' }
         ]
-    },
-    debug: 1
+    }
 };
-
-const translations = {
-    ru: { loading: "Загрузка сети...", create: "СОЗДАТЬ", join: "ВОЙТИ", code: "КОД", start: "СТАРТ", pressStart: "ЖМИ СТАРТ", waitingHost: "ЖДЕМ ХОСТА...", invalidCode: "Ошибка: Код короткий" },
-    uk: { loading: "Завантаження мережі...", create: "СТВОРИТИ", join: "УВІЙТИ", code: "КОД", start: "СТАРТ", pressStart: "ТИСНИ СТАРТ", waitingHost: "ЧЕКАЄМО ХОСТА...", invalidCode: "Помилка: Код короткий" },
-    en: { loading: "Network loading...", create: "CREATE", join: "JOIN", code: "CODE", start: "START", pressStart: "PRESS START", waitingHost: "WAITING FOR HOST...", invalidCode: "Error: Code short" }
-};
-
-let currentLang = 'ru';
-
-function applyLanguage(lang) {
-    currentLang = lang;
-    const select = document.getElementById('langSelect');
-    if(select) select.value = lang;
-    document.querySelectorAll('[data-i18n]').forEach(el => {
-        const key = el.getAttribute('data-i18n');
-        if (translations[lang][key]) el.innerText = translations[lang][key];
-    });
-    document.querySelectorAll('[data-i18n-placeholder]').forEach(el => {
-        const key = el.getAttribute('data-i18n-placeholder');
-        if (translations[lang][key]) el.placeholder = translations[lang][key];
-    });
-}
-
-function changeLanguage(lang) {
-    applyLanguage(lang);
-    localStorage.setItem('prefLang', lang);
-}
 
 const skins = [
     { bg: "#1a1a1a", wall: "#444", p1: "#007aff", p2: "#ff3b30", ball: "#fff", line: "#333", trail: "#555", goalColor: "#34c759", fx: "none" },
@@ -70,16 +41,8 @@ class Particle {
     update() { this.x += this.vx; this.y += this.vy; this.life--; }
 }
 
-window.addEventListener('load', () => {
-    const savedLang = localStorage.getItem('prefLang');
-    const systemLang = navigator.language.split('-')[0];
-    applyLanguage(savedLang || (translations[systemLang] ? systemLang : 'en'));
-});
-
-// Инициализация при загрузке
 peer = new Peer(peerConfig);
 peer.on('open', () => document.getElementById('setupActions').style.display = 'block');
-peer.on('error', (err) => { console.error('Peer error:', err); });
 
 function changeSkin(val) { if(isHost) game.skin = parseInt(val); ballParticles = []; bgParticles = []; eventsFX = []; }
 
@@ -103,23 +66,27 @@ function createRoom() {
 
 function joinRoom() {
     const id = document.getElementById('joinId').value.toUpperCase().trim();
-    if(id.length < 3) { alert(translations[currentLang].invalidCode); return; }
+    if(id.length < 3) return;
     isHost = false;
     peer.destroy();
     setTimeout(() => {
         peer = new Peer(peerConfig);
         peer.on('open', () => {
-            conn = peer.connect(id, { reliable: true });
+            conn = peer.connect(id);
             conn.on('open', () => { showUI(id); setupLoops(); });
-            conn.on('error', (err) => { alert("Ошибка соединения"); });
         });
     }, 300);
 }
 
-function showUI(id) { document.getElementById('menu').style.display = 'none'; document.getElementById('gameUI').style.display = 'block'; displayId.innerText = id; }
+function showUI(id) { 
+    document.getElementById('menu').style.display = 'none'; 
+    document.getElementById('gameUI').style.display = 'flex'; 
+    displayId.innerText = id; 
+    window.scrollTo(0, 0);
+}
 
 function setupLoops() {
-    document.getElementById('gameArea').style.display = 'block';
+    document.getElementById('gameArea').style.display = 'flex';
     conn.on('data', data => {
         if (data.type === 'START') setGameStartedUI();
         else if (isHost) { game.p2.x = data.x; game.p2.y = 600 - data.y; }
@@ -202,8 +169,7 @@ function draw() {
     ctx.strokeStyle = s.line; ctx.lineWidth = 2;
     ctx.beginPath(); ctx.arc(200, 300, 40, 0, 7); ctx.stroke();
     ctx.beginPath(); ctx.moveTo(0, 300); ctx.lineTo(400, 300); ctx.stroke();
-    ctx.strokeStyle = s.wall; ctx.lineWidth = 6;
-    ctx.strokeRect(3, 3, 394, 594);
+    ctx.strokeStyle = s.wall; ctx.lineWidth = 6; ctx.strokeRect(3, 3, 394, 594);
     ctx.lineCap = "round"; ctx.strokeStyle = s.goalColor; ctx.shadowBlur = 10; ctx.shadowColor = s.goalColor; ctx.lineWidth = 10;
     ctx.beginPath(); ctx.moveTo(135, 5); ctx.lineTo(265, 5); ctx.stroke();
     ctx.beginPath(); ctx.moveTo(135, 595); ctx.lineTo(265, 595); ctx.stroke();
@@ -218,18 +184,15 @@ function draw() {
     if (!gameStarted) { 
         ctx.fillStyle = "rgba(0,0,0,0.8)"; ctx.fillRect(0,0,400,600); ctx.fillStyle = "#fff"; 
         ctx.textAlign = "center"; ctx.font = "20px Segoe UI";
-        ctx.fillText(isHost ? translations[currentLang].pressStart : translations[currentLang].waitingHost, 200, 300); 
+        ctx.fillText(isHost ? "ЖМИ СТАРТ" : "ЖДЕМ ХОСТА...", 200, 300); 
     }
 }
 
 function gameLoop() { update(); draw(); if (conn && conn.open) requestAnimationFrame(gameLoop); }
 
-// --- FULLSCREEN (GLOBAL) ---
 window.toggleFullscreen = function() {
-    const d = document;
-    const de = d.documentElement;
+    const d = document; const de = d.documentElement;
     const isFull = d.fullscreenElement || d.webkitFullscreenElement || d.mozFullScreenElement || d.msFullscreenElement;
-
     if (!isFull) {
         const req = de.requestFullscreen || de.webkitRequestFullScreen || de.mozRequestFullScreen || de.msRequestFullscreen;
         if (req) req.call(de);
