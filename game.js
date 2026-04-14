@@ -3,14 +3,10 @@ const ctx = canvas.getContext('2d');
 const displayId = document.getElementById('displayId');
 const scoreDisplay = document.getElementById('scoreDisplay');
 const resetBtn = document.getElementById('resetBtn');
-const overlay = document.getElementById('reconnectOverlay');
-const timerText = document.getElementById('reconnectTimer');
-const statusDiv = document.getElementById('status');
-const setupActions = document.getElementById('setupActions');
 
 let peer, conn, isHost = false, gameStarted = false;
-let lastMsgTime = Date.now();
-let currentRoomId = "";
+let ballParticles = [], bgParticles = [], eventsFX = [];
+let lastEventTime = Date.now();
 
 const skins = [
     { bg: "#1a1a1a", wall: "#444", p1: "#007aff", p2: "#ff3b30", ball: "#fff", line: "#333", trail: "#555", goalColor: "#34c759", fx: "none" },
@@ -25,144 +21,88 @@ const skins = [
 ];
 
 let game = { p1: { x: 200, y: 530 }, p2: { x: 200, y: 70 }, ball: { x: 200, y: 300, vx: 0, vy: 0 }, score1: 0, score2: 0, skin: 0 };
+let lastBallPos = { x: 200, y: 300 };
 
-// 1. Инициализация при загрузке (ОДИН РАЗ)
-function initSystem() {
-    peer = new Peer(); 
-    
-    peer.on('open', (id) => {
-        console.log('Peer ready with ID:', id);
-        statusDiv.style.display = 'none';
-        setupActions.style.display = 'block';
-    });
-
-    peer.on('connection', (c) => {
-        if (isHost) {
-            conn = c;
-            bindEvents();
-        }
-    });
-
-    peer.on('error', (err) => {
-        console.error('Peer error:', err.type);
-        if (err.type === 'unavailable-id') {
-            statusDiv.innerText = "Код уже занят или ошибка сервера.";
-        }
-    });
+class Particle {
+    constructor(x, y, color, size, vx, vy, life) {
+        this.x = x; this.y = y; this.color = color; this.size = size;
+        this.vx = vx; this.vy = vy; this.life = life; this.maxLife = life;
+    }
+    update() { this.x += this.vx; this.y += this.vy; this.life--; }
 }
 
-function bindEvents() {
-    conn.on('open', () => {
-        overlay.style.display = 'none';
-        lastMsgTime = Date.now();
-        if (isHost) {
-            document.getElementById('hostControls').style.display = 'block';
-            document.getElementById('skinSelectorContainer').style.display = 'block';
-            resetBtn.style.display = 'block';
-        }
-        setupLoops();
-    });
+peer = new Peer();
+peer.on('open', () => document.getElementById('setupActions').style.display = 'block');
 
-    conn.on('data', data => {
-        lastMsgTime = Date.now();
-        if (data.type === 'START') { gameStarted = true; setGameStartedUI(); }
-        else if (isHost) { game.p2.x = data.x; game.p2.y = 600 - data.y; }
-        else { 
-            game = data.state; 
-            if(data.started && !gameStarted) { gameStarted = true; setGameStartedUI(); }
-        }
-    });
+function changeSkin(val) { if(isHost) game.skin = parseInt(val); ballParticles = []; bgParticles = []; eventsFX = []; }
 
-    conn.on('close', () => { overlay.style.display = 'flex'; });
-}
-
-// 2. Создание комнаты (Хост)
 function createRoom() {
     isHost = true;
     const shortId = Math.random().toString(36).substring(2, 7).toUpperCase();
-    
-    // Пересоздаем Peer с конкретным ID
     peer.destroy();
     setTimeout(() => {
         peer = new Peer(shortId);
-        peer.on('open', (id) => {
-            currentRoomId = id;
-            displayId.innerText = id;
-            document.getElementById('menu').style.display = 'none';
-            document.getElementById('gameUI').style.display = 'block';
+        peer.on('open', id => { showUI(id); resetBtn.style.display = 'block'; });
+        peer.on('connection', c => {
+            conn = c;
+            conn.on('open', () => {
+                document.getElementById('hostControls').style.display = 'block';
+                document.getElementById('skinSelectorContainer').style.display = 'block';
+                setupLoops();
+            });
         });
-        peer.on('connection', (c) => { conn = c; bindEvents(); });
     }, 200);
 }
 
-// 3. Вход в комнату (Клиент)
 function joinRoom() {
+    const id = document.getElementById('joinId').value.toUpperCase().trim();
+    if(id.length < 3) return;
     isHost = false;
-    currentRoomId = document.getElementById('joinId').value.toUpperCase().trim();
-    if (currentRoomId.length < 3) return;
-
-    conn = peer.connect(currentRoomId);
-    bindEvents();
-    
-    document.getElementById('menu').style.display = 'none';
-    document.getElementById('gameUI').style.display = 'block';
-    displayId.innerText = currentRoomId;
+    peer.destroy();
+    setTimeout(() => {
+        peer = new Peer();
+        peer.on('open', () => {
+            conn = peer.connect(id);
+            conn.on('open', () => { showUI(id); setupLoops(); });
+        });
+    }, 200);
 }
 
-function reconnectAttempt() {
-    if (isHost) {
-        // Хост просто ждет входящего подключения снова
-        console.log("Host waiting for client...");
-    } else {
-        if (conn) conn.close();
-        conn = peer.connect(currentRoomId);
-        bindEvents();
-    }
-}
+function showUI(id) { document.getElementById('menu').style.display = 'none'; document.getElementById('gameUI').style.display = 'block'; displayId.innerText = id; }
 
 function setupLoops() {
     document.getElementById('gameArea').style.display = 'block';
+    conn.on('data', data => {
+        if (data.type === 'START') setGameStartedUI();
+        else if (isHost) { game.p2.x = data.x; game.p2.y = 600 - data.y; }
+        else { game = data.state; gameStarted = data.started; if(gameStarted) setGameStartedUI(); }
+    });
     requestAnimationFrame(gameLoop);
 }
 
 function setGameStartedUI() {
+    gameStarted = true;
+    document.getElementById('status').style.display = 'none';
     displayId.classList.remove('id-large');
     displayId.classList.add('id-small');
 }
 
 function sendStartSignal() {
-    gameStarted = true;
     setGameStartedUI();
     document.getElementById('hostControls').style.display = 'none';
-    setInterval(() => { if(conn && conn.open) conn.send({ type: 'START' }); }, 1000);
+    setInterval(() => { if(conn && conn.open) conn.send({ type: 'START' }); }, 500);
 }
 
 function manualBallReset() { if(isHost) game.ball = { x: 200, y: 300, vx: 0, vy: 0 }; }
 
-function gameLoop() {
-    const now = Date.now();
-    if (gameStarted && now - lastMsgTime > 3000) {
-        overlay.style.display = 'flex';
-        let timeLeft = Math.max(0, 30 - Math.floor((now - lastMsgTime) / 1000));
-        timerText.innerText = `Ожидание игрока: ${timeLeft}с`;
-    } else {
-        if (overlay.style.display === 'flex') overlay.style.display = 'none';
-        update();
-    }
-    draw();
-    requestAnimationFrame(gameLoop);
-}
-
-function changeSkin(val) { if(isHost) game.skin = parseInt(val); }
-
 const handleInput = (e) => {
-    if(!gameStarted || overlay.style.display === 'flex') return;
+    if(!gameStarted) return;
     const rect = canvas.getBoundingClientRect();
     const t = e.touches ? e.touches[0] : e;
     const x = (t.clientX - rect.left) * (400 / rect.width);
     const y = (t.clientY - rect.top) * (600 / rect.height);
     if (isHost) { game.p1.x = Math.max(25, Math.min(375, x)); game.p1.y = Math.max(320, Math.min(575, y)); }
-    else if (conn && conn.open) conn.send({ x: Math.max(25, Math.min(375, x)), y: Math.max(320, Math.min(575, y)) });
+    else if (conn.open) conn.send({ x: Math.max(25, Math.min(375, x)), y: Math.max(320, Math.min(575, y)) });
 };
 
 canvas.addEventListener('mousemove', handleInput);
@@ -189,26 +129,76 @@ function update() {
         }
     });
     game.ball.vx *= 0.988; game.ball.vy *= 0.988;
-    if (conn && conn.open) conn.send({ state: game, started: gameStarted });
+    if (conn.open) conn.send({ state: game, started: gameStarted });
+}
+
+function drawFX(s) {
+    const rB = isHost ? game.ball : { x: game.ball.x, y: 600 - game.ball.y };
+    if (Math.abs(rB.x - lastBallPos.x) + Math.abs(rB.y - lastBallPos.y) > 2) {
+        ballParticles.push(new Particle(rB.x, rB.y, s.trail, Math.random()*4, -(rB.x-lastBallPos.x)*0.2, -(rB.y-lastBallPos.y)*0.2, 20));
+    }
+    lastBallPos = { x: rB.x, y: rB.y };
+
+    if (s.fx === 'space') { if(Math.random() > 0.98) bgParticles.push(new Particle(Math.random()*400, 0, "#fff", 1, 0.2, 0.6, 150)); }
+    else if (s.fx === 'lava') { if(Math.random() > 0.95) bgParticles.push(new Particle(Math.random()*400, 600, "#ff4500", 1, 0, -1, 60)); }
+    else if (s.fx === 'forest') { if(Math.random() > 0.96) bgParticles.push(new Particle(Math.random()*400, 600, "#aaffaa", 1, (Math.random()-0.5), -0.5, 100)); }
+
+    if (Date.now() - lastEventTime > 10000) {
+        if (Math.random() > 0.5) { eventsFX.push({ x: -100, y: Math.random()*600, type: s.fx, progress: 0 }); lastEventTime = Date.now(); }
+    }
+    eventsFX.forEach((ev, i) => {
+        ev.progress += 0.005; ctx.globalAlpha = Math.sin(ev.progress * Math.PI) * 0.2;
+        ctx.fillStyle = "#fff"; ctx.beginPath(); ctx.arc(ev.progress*600, ev.y, 50, 0, 7); ctx.fill();
+        if (ev.progress >= 1) eventsFX.splice(i, 1);
+    });
+
+    [bgParticles, ballParticles].forEach(arr => {
+        for(let i=arr.length-1; i>=0; i--) {
+            arr[i].update();
+            if(arr[i].life <= 0) arr.splice(i, 1);
+            else { ctx.globalAlpha = arr[i].life/arr[i].maxLife; ctx.fillStyle = arr[i].color; ctx.beginPath(); ctx.arc(arr[i].x, arr[i].y, arr[i].size, 0, 7); ctx.fill(); }
+        }
+    });
+    ctx.globalAlpha = 1;
 }
 
 function draw() {
     const s = skins[game.skin] || skins[0];
     ctx.fillStyle = s.bg; ctx.fillRect(0, 0, 400, 600);
     if (s.fx === 'grass') { for(let i=0; i<600; i+=60) { ctx.fillStyle = i%120===0 ? "#2d5a27" : "#32622c"; ctx.fillRect(5, i+5, 390, 50); } }
+    
+    drawFX(s);
+
+    // Разметка
     ctx.strokeStyle = s.line; ctx.lineWidth = 2;
     ctx.beginPath(); ctx.arc(200, 300, 40, 0, 7); ctx.stroke();
     ctx.beginPath(); ctx.moveTo(0, 300); ctx.lineTo(400, 300); ctx.stroke();
-    ctx.strokeStyle = s.wall; ctx.lineWidth = 6; ctx.strokeRect(3, 3, 394, 594);
-    ctx.strokeStyle = s.goalColor; ctx.lineWidth = 10;
+    
+    // Борта
+    ctx.strokeStyle = s.wall; ctx.lineWidth = 6;
+    ctx.strokeRect(3, 3, 394, 594);
+    
+    // ГЛАВНОЕ: Видимые ворота
+    ctx.lineCap = "round";
+    ctx.strokeStyle = s.goalColor;
+    ctx.shadowBlur = 10; ctx.shadowColor = s.goalColor;
+    ctx.lineWidth = 10;
+    // Верхние
     ctx.beginPath(); ctx.moveTo(135, 5); ctx.lineTo(265, 5); ctx.stroke();
+    // Нижние
     ctx.beginPath(); ctx.moveTo(135, 595); ctx.lineTo(265, 595); ctx.stroke();
+    ctx.shadowBlur = 0;
+
     scoreDisplay.innerText = isHost ? `${game.score1} : ${game.score2}` : `${game.score2} : ${game.score1}`;
     let my = isHost ? game.p1 : {x: game.p2.x, y: 600 - game.p2.y}, op = isHost ? game.p2 : {x: game.p1.x, y: 600 - game.p1.y};
+    
+    if(s.glow) { ctx.shadowBlur = s.glow; ctx.shadowColor = s.wall; }
     ctx.fillStyle = s.p1; ctx.beginPath(); ctx.arc(my.x, my.y, 25, 0, 7); ctx.fill();
     ctx.fillStyle = s.p2; ctx.beginPath(); ctx.arc(op.x, op.y, 25, 0, 7); ctx.fill();
     ctx.fillStyle = s.ball; ctx.beginPath(); ctx.arc(game.ball.x, isHost?game.ball.y:600-game.ball.y, 12, 0, 7); ctx.fill();
-    if (!gameStarted) { ctx.fillStyle = "rgba(0,0,0,0.8)"; ctx.fillRect(0,0,400,600); ctx.fillStyle = "#fff"; ctx.fillText(isHost?"ЖМИ СТАРТ":"ЖДЕМ ХОСТА...", 140, 300); }
+    ctx.shadowBlur = 0;
+
+    if (!gameStarted) { ctx.fillStyle = "rgba(0,0,0,0.8)"; ctx.fillRect(0,0,400,600); ctx.fillStyle = "#fff"; ctx.fillText(isHost?"ЖМИ СТАРТ":"ЖДЕМ ХОСТА...", 200, 300); }
 }
 
-initSystem();
+function gameLoop() { update(); draw(); if (conn && conn.open) requestAnimationFrame(gameLoop); }
