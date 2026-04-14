@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Air Hockey FX Ultra</title>
+    <title>Air Hockey FX Pro</title>
     <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
     <style>
         body { background: #000; color: #fff; text-align: center; font-family: 'Segoe UI', sans-serif; margin: 0; overflow: hidden; touch-action: none; user-select: none; -webkit-user-select: none; }
@@ -11,14 +11,19 @@
         .btn { padding: 15px 45px; font-size: 18px; cursor: pointer; margin: 10px; border: none; border-radius: 50px; background: #007aff; color: white; font-weight: bold; box-shadow: 0 4px 15px rgba(0,122,255,0.4); text-transform: uppercase; }
         input, select { padding: 12px; font-size: 16px; border-radius: 12px; border: 2px solid #333; background: #222; color: #fff; outline: none; margin: 5px; }
         
-        /* Крупный зеленый код */
-        #displayId { font-size: 48px; font-weight: 900; color: #34c759; text-shadow: 0 0 20px rgba(52, 199, 89, 0.6); display: block; margin: 10px 0; letter-spacing: 5px; }
+        /* Состояния кода комнаты */
+        #displayId { font-weight: 900; color: #34c759; display: block; transition: all 0.5s ease; }
+        .id-large { font-size: 48px; text-shadow: 0 0 20px rgba(52, 199, 89, 0.6); margin: 10px 0; letter-spacing: 5px; }
+        .id-small { font-size: 14px; text-shadow: none; margin: 0; opacity: 0.5; letter-spacing: 1px; }
         
         #gameArea { position: relative; display: none; margin: 0 auto; width: 400px; height: 600px; }
         canvas { background: #000; border: 4px solid #333; border-radius: 10px; display: block; max-height: 75vh; max-width: 95vw; margin: 0 auto; }
         #status { color: #ffcc00; padding: 10px; font-size: 18px; min-height: 25px; }
         .score-board { font-size: 38px; font-weight: bold; margin: 5px 0; font-variant-numeric: tabular-nums; }
-        .btn-reset { position: absolute; top: 10px; right: 10px; padding: 6px 12px; font-size: 12px; background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); border-radius: 6px; z-index: 20; color: #fff; }
+        
+        /* Кнопка только для хоста */
+        .btn-reset { position: absolute; top: 10px; right: 10px; padding: 6px 12px; font-size: 12px; background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); border-radius: 6px; z-index: 20; color: #fff; display: none; }
+        
         #skinSelectorContainer { margin-bottom: 10px; display: none; background: rgba(255,255,255,0.05); padding: 8px 20px; border-radius: 20px; backdrop-filter: blur(10px); }
     </style>
 </head>
@@ -30,7 +35,7 @@
         <div id="setupActions" style="display:none;">
             <button class="btn" onclick="createRoom()">СОЗДАТЬ ИГРУ</button>
             <br>
-            <input type="text" id="joinId" placeholder="КОД ИЗ 5 БУКВ" maxlength="5">
+            <input type="text" id="joinId" placeholder="КОД КОМНАТЫ" maxlength="5">
             <button class="btn" style="background: #5856d6;" onclick="joinRoom()">ВОЙТИ</button>
         </div>
     </div>
@@ -38,8 +43,8 @@
     <div id="gameUI" style="display:none;">
         <div class="score-board" id="scoreDisplay">0 : 0</div>
         
-        <div id="hostWaitingArea">
-            <span id="displayId">...</span>
+        <div id="uiHeader">
+            <span id="displayId" class="id-large">...</span>
             <div id="skinSelectorContainer">
                 <select id="skinSelect" onchange="changeSkin(this.value)">
                     <option value="0">Classic</option>
@@ -59,7 +64,7 @@
         </div>
 
         <div id="gameArea">
-            <button class="btn-reset" onclick="manualBallReset()">🆘 RESET</button>
+            <button id="resetBtn" class="btn-reset" onclick="manualBallReset()">🆘 RESET</button>
             <canvas id="gameCanvas" width="400" height="600"></canvas>
         </div>
     </div>
