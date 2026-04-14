@@ -8,6 +8,62 @@ let peer, conn, isHost = false, gameStarted = false;
 let ballParticles = [], bgParticles = [], eventsFX = [];
 let lastEventTime = Date.now();
 
+// --- СЛОВАРЬ ПЕРЕВОДОВ ---
+const translations = {
+    ru: {
+        loading: "Загрузка...",
+        create: "СОЗДАТЬ",
+        join: "ВОЙТИ",
+        code: "КОД",
+        start: "СТАРТ",
+        pressStart: "ЖМИ СТАРТ",
+        waitingHost: "ЖДЕМ ХОСТА...",
+        invalidCode: "Ошибка: Код слишком короткий"
+    },
+    uk: {
+        loading: "Завантаження...",
+        create: "СТВОРИТИ",
+        join: "УВІЙТИ",
+        code: "КОД",
+        start: "СТАРТ",
+        pressStart: "ТИСНИ СТАРТ",
+        waitingHost: "ЧЕКАЄМО ХОСТА...",
+        invalidCode: "Помилка: Код занадто короткий"
+    },
+    en: {
+        loading: "Loading...",
+        create: "CREATE",
+        join: "JOIN",
+        code: "CODE",
+        start: "START",
+        pressStart: "PRESS START",
+        waitingHost: "WAITING FOR HOST...",
+        invalidCode: "Error: Code is too short"
+    }
+};
+
+let currentLang = 'ru';
+
+function applyLanguage(lang) {
+    currentLang = lang;
+    document.getElementById('langSelect').value = lang;
+    
+    document.querySelectorAll('[data-i18n]').forEach(el => {
+        const key = el.getAttribute('data-i18n');
+        if (translations[lang][key]) el.innerText = translations[lang][key];
+    });
+
+    document.querySelectorAll('[data-i18n-placeholder]').forEach(el => {
+        const key = el.getAttribute('data-i18n-placeholder');
+        if (translations[lang][key]) el.placeholder = translations[lang][key];
+    });
+}
+
+function changeLanguage(lang) {
+    applyLanguage(lang);
+    localStorage.setItem('prefLang', lang);
+}
+
 const skins = [
     { bg: "#1a1a1a", wall: "#444", p1: "#007aff", p2: "#ff3b30", ball: "#fff", line: "#333", trail: "#555", goalColor: "#34c759", fx: "none" },
     { bg: "#000", wall: "#0ff", p1: "#0f0", p2: "#f0f", ball: "#fff", line: "#0ff", trail: "#fff", glow: 15, goalColor: "#ff0", fx: "neon" },
@@ -30,6 +86,14 @@ class Particle {
     }
     update() { this.x += this.vx; this.y += this.vy; this.life--; }
 }
+
+// Инициализация при загрузке
+window.addEventListener('load', () => {
+    const savedLang = localStorage.getItem('prefLang');
+    const systemLang = navigator.language.split('-')[0];
+    const targetLang = savedLang || (translations[systemLang] ? systemLang : 'en');
+    applyLanguage(targetLang);
+});
 
 peer = new Peer();
 peer.on('open', () => document.getElementById('setupActions').style.display = 'block');
@@ -56,7 +120,7 @@ function createRoom() {
 
 function joinRoom() {
     const id = document.getElementById('joinId').value.toUpperCase().trim();
-    if(id.length < 3) return;
+    if(id.length < 3) { alert(translations[currentLang].invalidCode); return; }
     isHost = false;
     peer.destroy();
     setTimeout(() => {
@@ -169,23 +233,18 @@ function draw() {
     
     drawFX(s);
 
-    // Разметка
     ctx.strokeStyle = s.line; ctx.lineWidth = 2;
     ctx.beginPath(); ctx.arc(200, 300, 40, 0, 7); ctx.stroke();
     ctx.beginPath(); ctx.moveTo(0, 300); ctx.lineTo(400, 300); ctx.stroke();
     
-    // Борта
     ctx.strokeStyle = s.wall; ctx.lineWidth = 6;
     ctx.strokeRect(3, 3, 394, 594);
     
-    // ГЛАВНОЕ: Видимые ворота
     ctx.lineCap = "round";
     ctx.strokeStyle = s.goalColor;
     ctx.shadowBlur = 10; ctx.shadowColor = s.goalColor;
     ctx.lineWidth = 10;
-    // Верхние
     ctx.beginPath(); ctx.moveTo(135, 5); ctx.lineTo(265, 5); ctx.stroke();
-    // Нижние
     ctx.beginPath(); ctx.moveTo(135, 595); ctx.lineTo(265, 595); ctx.stroke();
     ctx.shadowBlur = 0;
 
@@ -198,7 +257,14 @@ function draw() {
     ctx.fillStyle = s.ball; ctx.beginPath(); ctx.arc(game.ball.x, isHost?game.ball.y:600-game.ball.y, 12, 0, 7); ctx.fill();
     ctx.shadowBlur = 0;
 
-    if (!gameStarted) { ctx.fillStyle = "rgba(0,0,0,0.8)"; ctx.fillRect(0,0,400,600); ctx.fillStyle = "#fff"; ctx.fillText(isHost?"ЖМИ СТАРТ":"ЖДЕМ ХОСТА...", 200, 300); }
+    if (!gameStarted) { 
+        ctx.fillStyle = "rgba(0,0,0,0.8)"; 
+        ctx.fillRect(0,0,400,600); 
+        ctx.fillStyle = "#fff"; 
+        ctx.textAlign = "center";
+        ctx.font = "20px Segoe UI";
+        ctx.fillText(isHost ? translations[currentLang].pressStart : translations[currentLang].waitingHost, 200, 300); 
+    }
 }
 
 function gameLoop() { update(); draw(); if (conn && conn.open) requestAnimationFrame(gameLoop); }
