@@ -16,7 +16,7 @@ let game = {
     score1: 0, score2: 0
 };
 
-// --- ПЕРЕВОДЫ ---
+// --- СЛОВАРЬ ПЕРЕВОДОВ ---
 const translations = {
     ru: {
         loading: "Загрузка системы...",
@@ -77,19 +77,17 @@ function applyLanguage(lang) {
     currentLang = lang;
     document.getElementById('langSelect').value = lang;
     
-    // Перевод всех элементов с атрибутом data-i18n
     document.querySelectorAll('[data-i18n]').forEach(el => {
         const key = el.getAttribute('data-i18n');
         if (translations[lang][key]) el.innerText = translations[lang][key];
     });
 
-    // Перевод плейсхолдеров
     document.querySelectorAll('[data-i18n-placeholder]').forEach(el => {
         const key = el.getAttribute('data-i18n-placeholder');
         if (translations[lang][key]) el.placeholder = translations[lang][key];
     });
 
-    refreshLobby(); // Обновить текст на кнопках в списке
+    refreshLobby(); 
 }
 
 function changeLanguage(lang) {
@@ -100,7 +98,7 @@ function changeLanguage(lang) {
 // --- СЕТЕВАЯ ЛОГИКА ---
 
 function init() {
-    // Определение языка
+    // Определяем язык: сохраненный -> системный -> английский
     const savedLang = localStorage.getItem('prefLang');
     const systemLang = navigator.language.split('-')[0];
     const targetLang = savedLang || (translations[systemLang] ? systemLang : 'en');
@@ -171,12 +169,8 @@ function quickJoin() {
     }
 }
 
-function joinRoom() {
-    const code = document.getElementById('joinId').value.toUpperCase().trim();
-    joinByCode(code);
-}
-
-function joinByCode(code) {
+function joinByCode(customCode) {
+    const code = customCode || document.getElementById('manualId').value.toUpperCase().trim();
     if (!code) return;
     conn = peer.connect(PRE + code);
     isHost = false;
@@ -199,8 +193,7 @@ function setupConnection() {
             document.getElementById('msgOverlay').style.display = 'none';
         }
         if (isHost) {
-            game.p2.x = data.x;
-            game.p2.y = 600 - data.y;
+            game.p2.x = data.x; game.p2.y = 600 - data.y;
         } else {
             game = data.state;
             if (data.started) {
