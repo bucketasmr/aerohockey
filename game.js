@@ -1,4 +1,8 @@
-// Функция для создания случайного кода (например, 5 символов: A1Z9)
+let peer, conn;
+let isHost = false;
+let gameStarted = false;
+
+// 1. Генератор короткого кода
 function generateShortId(length = 5) {
     const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
     let result = '';
@@ -8,60 +12,51 @@ function generateShortId(length = 5) {
     return result;
 }
 
-function initPeer(customId = null) {
-    // Если мы хост, создаем короткий ID. Если клиент — подключаемся к существующему.
-    if (isHost && !customId) {
-        customId = generateShortId(5); // Генерируем код из 5 символов
-    }
-
-    // Создаем Peer с нашим коротким ID
-    peer = new Peer(customId);
+// 2. Функция создания комнаты (для ХОСТА)
+function createRoom() {
+    isHost = true;
+    const shortId = generateShortId(5); // Создаем код типа "XJ84S"
+    
+    document.getElementById('menu').style.display = 'none';
+    document.getElementById('gameUI').style.display = 'block';
+    
+    // Инициализируем Peer С КОНКРЕТНЫМ ID
+    peer = new Peer(shortId); 
 
     peer.on('open', id => {
-        document.getElementById('displayId').innerText = id;
-        if (isHost) {
-            status.innerText = "Комната создана. Передайте код второму игроку.";
-        } else {
-            status.innerText = "Подключение к " + id + "...";
-        }
-    });
-
-    peer.on('error', err => {
-        console.error(err);
-        if (err.type === 'unavailable-id') {
-            alert("Этот код уже занят, попробуйте создать заново.");
-        } else {
-            alert("Ошибка связи: " + err.type);
-        }
+        document.getElementById('displayId').innerText = id; // Здесь будет короткий код
+        status.innerText = "Комната создана. Ждем игрока...";
     });
 
     peer.on('connection', c => {
         conn = c;
         setupConnection();
     });
+
+    peer.on('error', err => {
+        if (err.type === 'unavailable-id') {
+            alert("Этот код уже занят, попробуйте еще раз.");
+            location.reload(); 
+        }
+    });
 }
 
-// Изменяем функции кнопок
-function createRoom() {
-    isHost = true;
-    document.getElementById('menu').style.display = 'none';
-    document.getElementById('gameUI').style.display = 'block';
-    initPeer(); // Тут сгенерируется короткий ID
-}
-
+// 3. Функция присоединения (для КЛИЕНТА)
 function joinRoom() {
-    const id = document.getElementById('joinId').value.toUpperCase(); // Код из инпута
+    const id = document.getElementById('joinId').value.toUpperCase().trim();
     if (!id) return alert("Введите код комнаты!");
-    
+
     isHost = false;
     document.getElementById('menu').style.display = 'none';
     document.getElementById('gameUI').style.display = 'block';
-    
-    // Клиенту НЕ НУЖЕН фиксированный ID, он просто подключается к хосту
+
+    // Клиент создает peer с ПРОВИЗОРОНЫМ (длинным) ID, 
+    // потому что ему не важно, какой ID у него, важно — к кому он коннектится.
     peer = new Peer(); 
-    
+
     peer.on('open', () => {
-        conn = peer.connect(id);
+        document.getElementById('displayId').innerText = "Подключаемся к " + id;
+        conn = peer.connect(id); // Коннектимся к короткому ID хоста
         setupConnection();
     });
 }
