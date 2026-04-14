@@ -9,8 +9,8 @@ let gameStarted = false;
 
 // Состояние игры
 let game = {
-    p1: { x: 200, y: 550 }, // Хост (всегда внизу у себя)
-    p2: { x: 200, y: 50 },  // Клиент (всегда вверху для хоста)
+    p1: { x: 200, y: 530 }, // Хост (Синий для себя)
+    p2: { x: 200, y: 70 },  // Клиент (Синий для себя)
     ball: { x: 200, y: 300, vx: 0, vy: 0 }
 };
 
@@ -29,7 +29,7 @@ function createRoom() {
         conn = c;
         conn.on('open', () => {
             document.getElementById('hostControls').style.display = 'block';
-            status.innerText = "Игрок в сети! Нажмите Старт.";
+            status.innerText = "Игрок подключен!";
             setupConnection();
         });
     });
@@ -55,14 +55,13 @@ function setupConnection() {
     conn.on('data', data => {
         if (data.type === 'START') {
             gameStarted = true;
-            status.innerText = "ИГРА НАЧАТА";
+            status.innerText = "ИГРАЕМ!";
         } else if (isHost) {
-            // Хост получает координаты клиента. 
-            // Клиент думает, что он внизу (Y > 300), поэтому хост должен "перевернуть" его Y для себя.
+            // Хост получает данные от клиента
             game.p2.x = data.x;
-            game.p2.y = 600 - data.y; 
+            game.p2.y = 600 - data.y; // Инвертируем Y клиента для мира хоста
         } else {
-            // Клиент получает всё состояние от хоста
+            // Клиент получает мир от хоста
             game = data.state;
             gameStarted = data.started;
         }
@@ -73,19 +72,23 @@ function setupConnection() {
 function sendStartSignal() {
     gameStarted = true;
     document.getElementById('hostControls').style.display = 'none';
-    status.innerText = "ИГРА НАЧАТА";
-    if (conn && conn.open) conn.send({ type: 'START' });
+    // Посылаем сигнал несколько раз для надежности
+    let attempts = 0;
+    const interval = setInterval(() => {
+        if (conn && conn.open) conn.send({ type: 'START' });
+        attempts++;
+        if (attempts > 5) clearInterval(interval);
+    }, 300);
 }
 
-// Управление пальцем/мышкой
 const handleInput = (e) => {
     const rect = canvas.getBoundingClientRect();
-    const clientX = (e.touches ? e.touches[0].clientX : e.clientX) - rect.left;
-    const clientY = (e.touches ? e.touches[0].clientY : e.clientY) - rect.top;
+    const x = (e.touches ? e.touches[0].clientX : e.clientX) - rect.left;
+    const y = (e.touches ? e.touches[0].clientY : e.clientY) - rect.top;
     
-    // Ограничиваем движение: только своя половина (нижняя)
-    let myX = Math.max(20, Math.min(380, clientX));
-    let myY = Math.max(320, Math.min(580, clientY)); 
+    // Ограничиваем: только нижняя половина
+    let myX = Math.max(25, Math.min(375, x));
+    let myY = Math.max(325, Math.min(575, y));
 
     if (isHost) {
         game.p1.x = myX;
@@ -104,28 +107,23 @@ function update() {
     game.ball.x += game.ball.vx;
     game.ball.y += game.ball.vy;
 
-    // Стенки
     if (game.ball.x < 15 || game.ball.x > 385) game.ball.vx *= -1;
 
-    // Столкновения с битами (физика круга)
     [game.p1, game.p2].forEach(p => {
         let dx = game.ball.x - p.x;
         let dy = game.ball.y - p.y;
         let dist = Math.sqrt(dx*dx + dy*dy);
         if (dist < 35) {
             let angle = Math.atan2(dy, dx);
-            let speed = Math.sqrt(game.ball.vx**2 + game.ball.vy**2) + 2;
-            game.ball.vx = Math.cos(angle) * speed;
-            game.ball.vy = Math.sin(angle) * speed;
+            game.ball.vx = Math.cos(angle) * 7;
+            game.ball.vy = Math.sin(angle) * 7;
         }
     });
 
-    // Трение и лимиты скорости
-    game.ball.vx *= 0.98;
-    game.ball.vy *= 0.98;
+    game.ball.vx *= 0.985;
+    game.ball.vy *= 0.985;
 
-    // Гол
-    if (game.ball.y < -10 || game.ball.y > 610) {
+    if (game.ball.y < -20 || game.ball.y > 620) {
         game.ball = { x: 200, y: 300, vx: 0, vy: 0 };
     }
 
@@ -137,37 +135,34 @@ function update() {
 function draw() {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     
-    // Поле
-    ctx.strokeStyle = "#fff";
+    // Линии поля
+    ctx.strokeStyle = "rgba(255,255,255,0.3)";
     ctx.lineWidth = 2;
-    ctx.strokeRect(5, 5, 390, 590);
     ctx.beginPath(); ctx.moveTo(0, 300); ctx.lineTo(400, 300); ctx.stroke();
+    ctx.strokeRect(5, 5, 390, 590);
 
-    // Мы рисуем всё относительно текущего игрока.
-    // Каждый игрок должен видеть себя СИНЕЙ битой ВНИЗУ.
-    
-    // Своя бита (всегда внизу)
-    ctx.fillStyle = "#007bff";
-    let myPos = isHost ? game.p1 : {x: game.p2.x, y: 600 - game.p2.y}; // Для клиента инвертируем его же Y
+    // ВАША БИТА (Синяя, всегда снизу)
+    ctx.fillStyle = "#007aff";
+    let myPos = isHost ? game.p1 : {x: game.p2.x, y: 600 - game.p2.y};
     ctx.beginPath(); ctx.arc(myPos.x, myPos.y, 25, 0, Math.PI*2); ctx.fill();
 
-    // Чужая бита (всегда вверху)
-    ctx.fillStyle = "#ff4757";
+    // ЧУЖАЯ БИТА (Красная, всегда сверху)
+    ctx.fillStyle = "#ff3b30";
     let oppPos = isHost ? game.p2 : {x: game.p1.x, y: 600 - game.p1.y};
     ctx.beginPath(); ctx.arc(oppPos.x, oppPos.y, 25, 0, Math.PI*2); ctx.fill();
 
-    // Шайба
+    // ШАЙБА
     ctx.fillStyle = "#fff";
-    let ballY = isHost ? game.ball.y : 600 - game.ball.y;
-    ctx.beginPath(); ctx.arc(game.ball.x, ballY, 12, 0, Math.PI*2); ctx.fill();
+    let bY = isHost ? game.ball.y : 600 - game.ball.y;
+    ctx.beginPath(); ctx.arc(game.ball.x, bY, 12, 0, Math.PI*2); ctx.fill();
     
     if (!gameStarted) {
-        ctx.fillStyle = "rgba(0,0,0,0.7)";
+        ctx.fillStyle = "rgba(0,0,0,0.8)";
         ctx.fillRect(0,0,400,600);
-        ctx.fillStyle = "white";
-        ctx.font = "20px Arial";
+        ctx.fillStyle = "#fff";
+        ctx.font = "bold 20px sans-serif";
         ctx.textAlign = "center";
-        ctx.fillText(isHost ? "НАЖМИТЕ СТАРТ" : "ОЖИДАНИЕ ХОСТА...", 200, 300);
+        ctx.fillText(isHost ? "НАЖМИТЕ СТАРТ" : "ЖДЕМ ХОСТА...", 200, 300);
     }
 }
 
