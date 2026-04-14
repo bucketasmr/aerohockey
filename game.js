@@ -9,15 +9,15 @@ let ballParticles = [], bgParticles = [], eventsFX = [];
 let lastEventTime = Date.now();
 
 const skins = [
-    { bg: "#1a1a1a", wall: "#333", p1: "#007aff", p2: "#ff3b30", ball: "#fff", line: "rgba(255,255,255,0.05)", trail: "#555", fx: "none" },
-    { bg: "#000", wall: "#0ff", p1: "#0f0", p2: "#f0f", ball: "#fff", line: "#0ff", trail: "#fff", glow: 15, fx: "neon" },
-    { bg: "#1a0f2e", wall: "#ff71ce", p1: "#01cdfe", p2: "#b967ff", ball: "#fff", line: "#ff71ce", trail: "#ff71ce", fx: "retro" },
-    { bg: "#2d5a27", wall: "#1e3d1a", p1: "#007aff", p2: "#ff3b30", ball: "#fff", line: "rgba(255,255,255,0.3)", trail: "rgba(255,255,255,0.4)", fx: "grass" },
-    { bg: "#081c08", wall: "#2e7d32", p1: "#fb8c00", p2: "#4e342e", ball: "#fff", line: "#4caf50", trail: "#81c784", fx: "forest" },
-    { bg: "#140d02", wall: "#5d4037", p1: "#ffd54f", p2: "#3e2723", ball: "#ffeb3b", line: "#6d4c41", trail: "#ffd54f", fx: "tomb" },
-    { bg: "#0d0000", wall: "#800", p1: "#ffeb3b", p2: "#d50000", ball: "#ff9100", line: "#ff4500", trail: "#ff4500", glow: 15, fx: "lava" },
-    { bg: "#02020a", wall: "#1a237e", p1: "#00e5ff", p2: "#d500f9", ball: "#e0e0e0", line: "rgba(255,255,255,0.05)", trail: "#fff", fx: "space" },
-    { bg: "#010816", wall: "#00ff41", p1: "#fee715", p2: "#ff00a0", ball: "#00ff41", line: "#001a00", trail: "#00ff41", fx: "cyber" }
+    { bg: "#1a1a1a", wall: "#444", p1: "#007aff", p2: "#ff3b30", ball: "#fff", line: "#333", trail: "#555", goalColor: "#34c759", fx: "none" },
+    { bg: "#000", wall: "#0ff", p1: "#0f0", p2: "#f0f", ball: "#fff", line: "#0ff", trail: "#fff", glow: 15, goalColor: "#ff0", fx: "neon" },
+    { bg: "#1a0f2e", wall: "#ff71ce", p1: "#01cdfe", p2: "#b967ff", ball: "#fff", line: "#ff71ce", trail: "#ff71ce", goalColor: "#0f0", fx: "retro" },
+    { bg: "#2d5a27", wall: "#1e3d1a", p1: "#007aff", p2: "#ff3b30", ball: "#fff", line: "rgba(255,255,255,0.2)", trail: "rgba(255,255,255,0.4)", goalColor: "#fff", fx: "grass" },
+    { bg: "#081c08", wall: "#2e7d32", p1: "#fb8c00", p2: "#4e342e", ball: "#fff", line: "#4caf50", trail: "#81c784", goalColor: "#e91e63", fx: "forest" },
+    { bg: "#140d02", wall: "#5d4037", p1: "#ffd54f", p2: "#3e2723", ball: "#ffeb3b", line: "#6d4c41", trail: "#ffd54f", goalColor: "#03a9f4", fx: "tomb" },
+    { bg: "#0d0000", wall: "#800", p1: "#ffeb3b", p2: "#d50000", ball: "#ff9100", line: "#ff4500", trail: "#ff4500", glow: 15, goalColor: "#fff", fx: "lava" },
+    { bg: "#02020a", wall: "#1a237e", p1: "#00e5ff", p2: "#d500f9", ball: "#e0e0e0", line: "rgba(255,255,255,0.1)", trail: "#fff", goalColor: "#fee715", fx: "space" },
+    { bg: "#010816", wall: "#00ff41", p1: "#fee715", p2: "#ff00a0", ball: "#00ff41", line: "#001a00", trail: "#00ff41", goalColor: "#fff", fx: "cyber" }
 ];
 
 let game = { p1: { x: 200, y: 530 }, p2: { x: 200, y: 70 }, ball: { x: 200, y: 300, vx: 0, vy: 0 }, score1: 0, score2: 0, skin: 0 };
@@ -132,24 +132,6 @@ function update() {
     if (conn.open) conn.send({ state: game, started: gameStarted });
 }
 
-function handleEvents(s) {
-    if (Date.now() - lastEventTime > 10000) {
-        if (Math.random() > 0.5) {
-            eventsFX.push({ x: -100, y: Math.random()*600, type: s.fx, progress: 0 });
-            lastEventTime = Date.now();
-        }
-    }
-    eventsFX.forEach((ev, i) => {
-        ev.progress += 0.005;
-        ctx.globalAlpha = Math.sin(ev.progress * Math.PI) * 0.3;
-        if (ev.type === 'space') { ctx.fillStyle = "#22f"; ctx.beginPath(); ctx.arc(ev.progress*600, ev.y, 40, 0, 7); ctx.fill(); }
-        else if (ev.type === 'grass') { ctx.fillStyle = "rgba(0,0,0,0.1)"; ctx.fillRect(ev.progress*600, ev.y, 80, 40); }
-        else if (ev.type === 'lava') { ctx.fillStyle = "#f40"; ctx.beginPath(); ctx.arc(200, 650 - ev.progress*400, 100, 0, 7); ctx.fill(); }
-        if (ev.progress >= 1) eventsFX.splice(i, 1);
-    });
-    ctx.globalAlpha = 1;
-}
-
 function drawFX(s) {
     const rB = isHost ? game.ball : { x: game.ball.x, y: 600 - game.ball.y };
     if (Math.abs(rB.x - lastBallPos.x) + Math.abs(rB.y - lastBallPos.y) > 2) {
@@ -157,13 +139,18 @@ function drawFX(s) {
     }
     lastBallPos = { x: rB.x, y: rB.y };
 
-    // Спокойные фоновые эффекты
-    if (s.fx === 'space') { if(Math.random() > 0.98) bgParticles.push(new Particle(Math.random()*400, 0, "#fff", 1, 0.2, 1, 150)); } // Звезды в 5 раз медленнее
+    if (s.fx === 'space') { if(Math.random() > 0.98) bgParticles.push(new Particle(Math.random()*400, 0, "#fff", 1, 0.2, 0.6, 150)); }
     else if (s.fx === 'lava') { if(Math.random() > 0.95) bgParticles.push(new Particle(Math.random()*400, 600, "#ff4500", 1, 0, -1, 60)); }
     else if (s.fx === 'forest') { if(Math.random() > 0.96) bgParticles.push(new Particle(Math.random()*400, 600, "#aaffaa", 1, (Math.random()-0.5), -0.5, 100)); }
-    else if (s.fx === 'neon') { if(Math.random() > 0.98) bgParticles.push(new Particle(Math.random()*400, Math.random()*600, s.wall, 1, 0, 0, 40)); }
 
-    handleEvents(s);
+    if (Date.now() - lastEventTime > 10000) {
+        if (Math.random() > 0.5) { eventsFX.push({ x: -100, y: Math.random()*600, type: s.fx, progress: 0 }); lastEventTime = Date.now(); }
+    }
+    eventsFX.forEach((ev, i) => {
+        ev.progress += 0.005; ctx.globalAlpha = Math.sin(ev.progress * Math.PI) * 0.2;
+        ctx.fillStyle = "#fff"; ctx.beginPath(); ctx.arc(ev.progress*600, ev.y, 50, 0, 7); ctx.fill();
+        if (ev.progress >= 1) eventsFX.splice(i, 1);
+    });
 
     [bgParticles, ballParticles].forEach(arr => {
         for(let i=arr.length-1; i>=0; i--) {
@@ -182,11 +169,26 @@ function draw() {
     
     drawFX(s);
 
+    // Разметка
     ctx.strokeStyle = s.line; ctx.lineWidth = 2;
     ctx.beginPath(); ctx.arc(200, 300, 40, 0, 7); ctx.stroke();
     ctx.beginPath(); ctx.moveTo(0, 300); ctx.lineTo(400, 300); ctx.stroke();
-    ctx.strokeStyle = s.wall; ctx.lineWidth = 6; ctx.strokeRect(3, 3, 394, 594);
     
+    // Борта
+    ctx.strokeStyle = s.wall; ctx.lineWidth = 6;
+    ctx.strokeRect(3, 3, 394, 594);
+    
+    // ГЛАВНОЕ: Видимые ворота
+    ctx.lineCap = "round";
+    ctx.strokeStyle = s.goalColor;
+    ctx.shadowBlur = 10; ctx.shadowColor = s.goalColor;
+    ctx.lineWidth = 10;
+    // Верхние
+    ctx.beginPath(); ctx.moveTo(135, 5); ctx.lineTo(265, 5); ctx.stroke();
+    // Нижние
+    ctx.beginPath(); ctx.moveTo(135, 595); ctx.lineTo(265, 595); ctx.stroke();
+    ctx.shadowBlur = 0;
+
     scoreDisplay.innerText = isHost ? `${game.score1} : ${game.score2}` : `${game.score2} : ${game.score1}`;
     let my = isHost ? game.p1 : {x: game.p2.x, y: 600 - game.p2.y}, op = isHost ? game.p2 : {x: game.p1.x, y: 600 - game.p1.y};
     
