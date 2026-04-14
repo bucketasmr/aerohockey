@@ -20,7 +20,15 @@ const skins = [
     { bg: "#010816", wall: "#00ff41", p1: "#fee715", p2: "#ff00a0", ball: "#00ff41", line: "#001a00", trail: "#00ff41", goalColor: "#fff", fx: "cyber" }
 ];
 
-let game = { p1: { x: 200, y: 530 }, p2: { x: 200, y: 70 }, ball: { x: 200, y: 300, vx: 0, vy: 0 }, score1: 0, score2: 0, skin: 0 };
+let game = { 
+    p1: { x: 200, y: 530 }, 
+    p2: { x: 200, y: 70 }, 
+    ball: { x: 200, y: 300, vx: 0, vy: 0 }, 
+    score1: 0, 
+    score2: 0, 
+    skin: 0 
+};
+
 let lastBallPos = { x: 200, y: 300 };
 
 class Particle {
@@ -93,7 +101,15 @@ function sendStartSignal() {
     setInterval(() => { if(conn && conn.open) conn.send({ type: 'START' }); }, 500);
 }
 
-function manualBallReset() { if(isHost) game.ball = { x: 200, y: 300, vx: 0, vy: 0 }; }
+// ФУНКЦИЯ ПОЛНОГО СБРОСА
+function manualFullReset() {
+    if(!isHost) return;
+    game.ball = { x: 200, y: 300, vx: 0, vy: 0 };
+    game.p1 = { x: 200, y: 530 };
+    game.p2 = { x: 200, y: 70 };
+    // Отправляем обновленное состояние немедленно
+    if (conn && conn.open) conn.send({ state: game, started: gameStarted });
+}
 
 const handleInput = (e) => {
     if(!gameStarted) return;
@@ -101,8 +117,13 @@ const handleInput = (e) => {
     const t = e.touches ? e.touches[0] : e;
     const x = (t.clientX - rect.left) * (400 / rect.width);
     const y = (t.clientY - rect.top) * (600 / rect.height);
-    if (isHost) { game.p1.x = Math.max(25, Math.min(375, x)); game.p1.y = Math.max(320, Math.min(575, y)); }
-    else if (conn.open) conn.send({ x: Math.max(25, Math.min(375, x)), y: Math.max(320, Math.min(575, y)) });
+    if (isHost) { 
+        game.p1.x = Math.max(25, Math.min(375, x)); 
+        game.p1.y = Math.max(320, Math.min(575, y)); 
+    }
+    else if (conn && conn.open) {
+        conn.send({ x: Math.max(25, Math.min(375, x)), y: Math.max(320, Math.min(575, y)) });
+    }
 };
 
 canvas.addEventListener('mousemove', handleInput);
@@ -110,16 +131,32 @@ canvas.addEventListener('touchmove', e => { e.preventDefault(); handleInput(e); 
 
 function update() {
     if (!isHost || !gameStarted) return;
+    
     game.ball.x += game.ball.vx; game.ball.y += game.ball.vy;
-    if (game.ball.x < 16 || game.ball.x > 384) { game.ball.x = game.ball.x < 16 ? 16 : 384; game.ball.vx *= -1; }
+    
+    if (game.ball.x < 16 || game.ball.x > 384) { 
+        game.ball.x = game.ball.x < 16 ? 16 : 384; 
+        game.ball.vx *= -1; 
+    }
+    
     if (game.ball.y < 16) {
-        if (game.ball.x > 135 && game.ball.x < 265) { if (game.ball.y < -20) { game.score1++; manualBallReset(); } }
-        else { game.ball.y = 16; game.ball.vy *= -1; }
+        if (game.ball.x > 135 && game.ball.x < 265) { 
+            if (game.ball.y < -20) { 
+                game.score1++; 
+                manualFullReset(); // Возврат на места после гола
+            } 
+        } else { game.ball.y = 16; game.ball.vy *= -1; }
     }
+    
     if (game.ball.y > 584) {
-        if (game.ball.x > 135 && game.ball.x < 265) { if (game.ball.y > 620) { game.score2++; manualBallReset(); } }
-        else { game.ball.y = 584; game.ball.vy *= -1; }
+        if (game.ball.x > 135 && game.ball.x < 265) { 
+            if (game.ball.y > 620) { 
+                game.score2++; 
+                manualFullReset(); // Возврат на места после гола
+            } 
+        } else { game.ball.y = 584; game.ball.vy *= -1; }
     }
+
     [game.p1, game.p2].forEach(p => {
         let dx = game.ball.x - p.x, dy = game.ball.y - p.y, d = Math.sqrt(dx*dx+dy*dy);
         if (d < 37) {
@@ -128,8 +165,9 @@ function update() {
             game.ball.x = p.x+Math.cos(a)*38; game.ball.y = p.y+Math.sin(a)*38;
         }
     });
+    
     game.ball.vx *= 0.988; game.ball.vy *= 0.988;
-    if (conn.open) conn.send({ state: game, started: gameStarted });
+    if (conn && conn.open) conn.send({ state: game, started: gameStarted });
 }
 
 function drawFX(s) {
@@ -169,23 +207,19 @@ function draw() {
     
     drawFX(s);
 
-    // Разметка
     ctx.strokeStyle = s.line; ctx.lineWidth = 2;
     ctx.beginPath(); ctx.arc(200, 300, 40, 0, 7); ctx.stroke();
     ctx.beginPath(); ctx.moveTo(0, 300); ctx.lineTo(400, 300); ctx.stroke();
     
-    // Борта
     ctx.strokeStyle = s.wall; ctx.lineWidth = 6;
     ctx.strokeRect(3, 3, 394, 594);
     
-    // ГЛАВНОЕ: Видимые ворота
+    // Ворота
     ctx.lineCap = "round";
     ctx.strokeStyle = s.goalColor;
     ctx.shadowBlur = 10; ctx.shadowColor = s.goalColor;
     ctx.lineWidth = 10;
-    // Верхние
     ctx.beginPath(); ctx.moveTo(135, 5); ctx.lineTo(265, 5); ctx.stroke();
-    // Нижние
     ctx.beginPath(); ctx.moveTo(135, 595); ctx.lineTo(265, 595); ctx.stroke();
     ctx.shadowBlur = 0;
 
