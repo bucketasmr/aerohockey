@@ -8,7 +8,6 @@ let peer, conn, isHost = false, gameStarted = false;
 let ballParticles = [], bgParticles = [], eventsFX = [];
 let lastEventTime = Date.now();
 
-// --- СЛОВАРЬ ПЕРЕВОДОВ ---
 const translations = {
     ru: {
         loading: "Загрузка...",
@@ -47,12 +46,10 @@ let currentLang = 'ru';
 function applyLanguage(lang) {
     currentLang = lang;
     document.getElementById('langSelect').value = lang;
-    
     document.querySelectorAll('[data-i18n]').forEach(el => {
         const key = el.getAttribute('data-i18n');
         if (translations[lang][key]) el.innerText = translations[lang][key];
     });
-
     document.querySelectorAll('[data-i18n-placeholder]').forEach(el => {
         const key = el.getAttribute('data-i18n-placeholder');
         if (translations[lang][key]) el.placeholder = translations[lang][key];
@@ -87,7 +84,6 @@ class Particle {
     update() { this.x += this.vx; this.y += this.vy; this.life--; }
 }
 
-// Инициализация при загрузке
 window.addEventListener('load', () => {
     const savedLang = localStorage.getItem('prefLang');
     const systemLang = navigator.language.split('-')[0];
@@ -146,7 +142,6 @@ function setupLoops() {
 
 function setGameStartedUI() {
     gameStarted = true;
-    document.getElementById('status').style.display = 'none';
     displayId.classList.remove('id-large');
     displayId.classList.add('id-small');
 }
@@ -202,20 +197,14 @@ function drawFX(s) {
         ballParticles.push(new Particle(rB.x, rB.y, s.trail, Math.random()*4, -(rB.x-lastBallPos.x)*0.2, -(rB.y-lastBallPos.y)*0.2, 20));
     }
     lastBallPos = { x: rB.x, y: rB.y };
-
     if (s.fx === 'space') { if(Math.random() > 0.98) bgParticles.push(new Particle(Math.random()*400, 0, "#fff", 1, 0.2, 0.6, 150)); }
     else if (s.fx === 'lava') { if(Math.random() > 0.95) bgParticles.push(new Particle(Math.random()*400, 600, "#ff4500", 1, 0, -1, 60)); }
     else if (s.fx === 'forest') { if(Math.random() > 0.96) bgParticles.push(new Particle(Math.random()*400, 600, "#aaffaa", 1, (Math.random()-0.5), -0.5, 100)); }
-
-    if (Date.now() - lastEventTime > 10000) {
-        if (Math.random() > 0.5) { eventsFX.push({ x: -100, y: Math.random()*600, type: s.fx, progress: 0 }); lastEventTime = Date.now(); }
-    }
     eventsFX.forEach((ev, i) => {
         ev.progress += 0.005; ctx.globalAlpha = Math.sin(ev.progress * Math.PI) * 0.2;
         ctx.fillStyle = "#fff"; ctx.beginPath(); ctx.arc(ev.progress*600, ev.y, 50, 0, 7); ctx.fill();
         if (ev.progress >= 1) eventsFX.splice(i, 1);
     });
-
     [bgParticles, ballParticles].forEach(arr => {
         for(let i=arr.length-1; i>=0; i--) {
             arr[i].update();
@@ -230,41 +219,38 @@ function draw() {
     const s = skins[game.skin] || skins[0];
     ctx.fillStyle = s.bg; ctx.fillRect(0, 0, 400, 600);
     if (s.fx === 'grass') { for(let i=0; i<600; i+=60) { ctx.fillStyle = i%120===0 ? "#2d5a27" : "#32622c"; ctx.fillRect(5, i+5, 390, 50); } }
-    
     drawFX(s);
-
     ctx.strokeStyle = s.line; ctx.lineWidth = 2;
     ctx.beginPath(); ctx.arc(200, 300, 40, 0, 7); ctx.stroke();
     ctx.beginPath(); ctx.moveTo(0, 300); ctx.lineTo(400, 300); ctx.stroke();
-    
     ctx.strokeStyle = s.wall; ctx.lineWidth = 6;
     ctx.strokeRect(3, 3, 394, 594);
-    
-    ctx.lineCap = "round";
-    ctx.strokeStyle = s.goalColor;
-    ctx.shadowBlur = 10; ctx.shadowColor = s.goalColor;
-    ctx.lineWidth = 10;
+    ctx.lineCap = "round"; ctx.strokeStyle = s.goalColor; ctx.shadowBlur = 10; ctx.shadowColor = s.goalColor; ctx.lineWidth = 10;
     ctx.beginPath(); ctx.moveTo(135, 5); ctx.lineTo(265, 5); ctx.stroke();
     ctx.beginPath(); ctx.moveTo(135, 595); ctx.lineTo(265, 595); ctx.stroke();
     ctx.shadowBlur = 0;
-
     scoreDisplay.innerText = isHost ? `${game.score1} : ${game.score2}` : `${game.score2} : ${game.score1}`;
     let my = isHost ? game.p1 : {x: game.p2.x, y: 600 - game.p2.y}, op = isHost ? game.p2 : {x: game.p1.x, y: 600 - game.p1.y};
-    
     if(s.glow) { ctx.shadowBlur = s.glow; ctx.shadowColor = s.wall; }
     ctx.fillStyle = s.p1; ctx.beginPath(); ctx.arc(my.x, my.y, 25, 0, 7); ctx.fill();
     ctx.fillStyle = s.p2; ctx.beginPath(); ctx.arc(op.x, op.y, 25, 0, 7); ctx.fill();
     ctx.fillStyle = s.ball; ctx.beginPath(); ctx.arc(game.ball.x, isHost?game.ball.y:600-game.ball.y, 12, 0, 7); ctx.fill();
     ctx.shadowBlur = 0;
-
     if (!gameStarted) { 
-        ctx.fillStyle = "rgba(0,0,0,0.8)"; 
-        ctx.fillRect(0,0,400,600); 
-        ctx.fillStyle = "#fff"; 
-        ctx.textAlign = "center";
-        ctx.font = "20px Segoe UI";
+        ctx.fillStyle = "rgba(0,0,0,0.8)"; ctx.fillRect(0,0,400,600); ctx.fillStyle = "#fff"; 
+        ctx.textAlign = "center"; ctx.font = "20px Segoe UI";
         ctx.fillText(isHost ? translations[currentLang].pressStart : translations[currentLang].waitingHost, 200, 300); 
     }
 }
 
 function gameLoop() { update(); draw(); if (conn && conn.open) requestAnimationFrame(gameLoop); }
+
+function toggleFullscreen() {
+    if (!document.fullscreenElement) {
+        document.documentElement.requestFullscreen().catch(err => {
+            alert(`Error attempting to enable full-screen mode: ${err.message}`);
+        });
+    } else {
+        document.exitFullscreen();
+    }
+}
