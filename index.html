@@ -12,9 +12,9 @@
         #quickJoinBtn { background: #ff3b30; }
         input, select { padding: 12px; font-size: 16px; border-radius: 12px; border: 2px solid #333; background: #222; color: #fff; outline: none; margin: 5px; text-align: center; }
         
-        /* Переключатель языка */
+        /* Переключатель языка в углу */
         #langSwitcher { position: absolute; top: 10px; right: 10px; z-index: 1000; }
-        #langSelect { padding: 5px; font-size: 12px; border-radius: 8px; background: rgba(255,255,255,0.1); border: 1px solid #444; cursor: pointer; }
+        #langSelect { padding: 5px 10px; font-size: 12px; border-radius: 8px; background: rgba(255,255,255,0.1); border: 1px solid #444; cursor: pointer; width: auto; }
 
         #displayId { font-weight: 900; color: #34c759; display: block; transition: all 0.5s ease; }
         .id-large { font-size: 48px; text-shadow: 0 0 20px rgba(52, 199, 89, 0.6); margin: 10px 0; letter-spacing: 5px; }
@@ -24,14 +24,15 @@
         .room-item { background: #1a1a1a; margin: 6px 0; padding: 10px; border-radius: 12px; display: flex; justify-content: space-between; align-items: center; border: 1px solid #333; }
         .room-code { color: #34c759; font-weight: bold; }
 
-        #gameUI { display: none; flex-direction: column; align-items: center; position: relative; height: 100vh; }
+        #gameUI { display: none; flex-direction: column; align-items: center; }
         #gameArea { position: relative; width: 400px; height: 600px; margin: 0 auto; }
         canvas { background: #000; border: 4px solid #444; border-radius: 10px; display: block; max-height: 75vh; max-width: 95vw; margin: 0 auto; }
         .score-board { font-size: 38px; font-weight: bold; margin: 5px 0; font-variant-numeric: tabular-nums; }
         
         .overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.85); display: flex; flex-direction: column; justify-content: center; align-items: center; z-index: 100; border-radius: 10px; }
         #roomCodeDisplay { color: #34c759; font-size: 32px; font-weight: 900; margin: 10px; letter-spacing: 3px; }
-        .btn-mini { padding: 5px 15px; font-size: 12px; width: auto; background: #5856d6; }
+        .btn-mini { padding: 5px 15px; font-size: 12px; width: auto; background: #5856d6; margin: 0; }
+        .btn-reset { position: absolute; top: 10px; right: 10px; padding: 6px 12px; font-size: 12px; background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.1); border-radius: 6px; z-index: 120; color: #fff; cursor: pointer; }
     </style>
 </head>
 <body>
@@ -48,11 +49,11 @@
         <div id="status" data-i18n="loading">Загрузка системы...</div>
         <div id="setupActions" style="display:none;">
             <button id="quickJoinBtn" class="btn" onclick="quickJoin()" data-i18n="noRooms">НЕТ СВОБОДНЫХ ИГР</button>
-            <button id="createBtn" class="btn" style="background: #444;" onclick="createRoom()" data-i18n="create">СОЗДАТЬ</button>
+            <button class="btn" style="background: #444;" onclick="createRoom()" data-i18n="create">СОЗДАТЬ</button>
             <br>
             <div style="margin-top:10px;">
-                <input type="text" id="joinId" placeholder="КОД" maxlength="5" data-i18n-placeholder="code">
-                <button id="joinBtn" class="btn" style="background: #5856d6; width: auto; padding: 12px 25px;" onclick="joinRoom()" data-i18n="join">ВОЙТИ</button>
+                <input type="text" id="manualId" placeholder="КОД" maxlength="5" data-i18n-placeholder="code">
+                <button class="btn" style="background: #5856d6; width: auto; padding: 12px 25px;" onclick="joinByCode()" data-i18n="join">ВОЙТИ</button>
             </div>
             <div id="lobbyContainer">
                 <div style="font-size: 10px; opacity: 0.5;" data-i18n="activeRooms">АКТИВНЫЕ КОМНАТЫ:</div>
@@ -64,13 +65,14 @@
     <div id="gameUI">
         <div class="score-board" id="scoreDisplay">0 : 0</div>
         <div id="hostControls" style="display:none; margin-bottom: 10px;">
-            <button id="startBtn" class="btn" style="width:auto; padding: 10px 30px; background:#34c759;" onclick="startGame()" data-i18n="start">СТАРТ</button>
-            <button id="menuBtn" class="btn" style="width:auto; padding: 10px 30px; background:#ff3b30;" onclick="location.reload()" data-i18n="toMenu">В МЕНЮ</button>
+            <button class="btn" style="width:auto; padding: 10px 30px; background:#34c759;" onclick="startGame()" data-i18n="start">СТАРТ</button>
+            <button class="btn" style="width:auto; padding: 10px 30px; background:#ff3b30;" onclick="location.reload()" data-i18n="toMenu">В МЕНЮ</button>
         </div>
         <div id="gameArea">
+            <button class="btn-reset" onclick="resetBall()">🆘 RESET</button>
             <div id="msgOverlay" class="overlay">
                 <h2 id="overlayText" data-i18n="waitingPlayer">ОЖИДАНИЕ ИГРОКА</h2>
-                <div id="roomCodeDisplay"></div>
+                <div id="roomCodeDisplay" class="id-large"></div>
             </div>
             <canvas id="gameCanvas" width="400" height="600"></canvas>
         </div>
