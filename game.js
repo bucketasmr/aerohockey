@@ -16,14 +16,18 @@ let game = {
     score1: 0, score2: 0
 };
 
+// --- СЕТЕВАЯ ЛОГИКА ---
+
 function init() {
+    // Генерируем ID
     myId = Math.random().toString(36).substring(2, 7).toUpperCase();
     peer = new Peer(PRE + myId);
 
     peer.on('open', (id) => {
         document.getElementById('status').style.display = 'none';
         document.getElementById('setupActions').style.display = 'block';
-        setInterval(refreshLobby, 3000);
+        // Запуск обновления лобби в реальном времени
+        setInterval(refreshLobby, 3000); 
     });
 
     peer.on('connection', (c) => {
@@ -34,16 +38,19 @@ function init() {
     });
 
     peer.on('error', (err) => {
-        console.error(err);
-        if (err.type === 'peer-unavailable') alert("Ошибка: Комната не найдена.");
+        console.log("Peer Error:", err.type);
+        if (err.type === 'peer-unavailable') alert("Ошибка: Комната не найдена. Проверьте код.");
     });
 }
 
 function refreshLobby() {
     if (gameStarted || !peer || peer.destroyed) return;
 
+    // Запрашиваем список всех активных ID у сервера PeerJS
     peer.listAllPeers((peers) => {
         if (!peers) return;
+        
+        // Фильтруем только те, что относятся к нашей игре
         const rooms = peers.filter(id => id.startsWith(PRE) && id !== (PRE + myId));
 
         if (rooms.length > 0) {
@@ -56,7 +63,8 @@ function refreshLobby() {
                 const code = id.replace(PRE, "");
                 const div = document.createElement('div');
                 div.className = 'room-item';
-                div.innerHTML = `<span>${code}</span><button onclick="joinByCode('${code}')">ВХОД</button>`;
+                div.innerHTML = `<span class="room-code">${code}</span>
+                                 <button class="btn btn-mini" onclick="joinByCode('${code}')">ВХОД</button>`;
                 roomListUI.appendChild(div);
             });
         } else {
@@ -78,17 +86,17 @@ function createRoom() {
 
 function quickJoin() {
     if (fastRoomId) {
-        conn = peer.connect(fastRoomId);
-        isHost = false;
-        setupConnection();
+        joinByCode(fastRoomId.replace(PRE, ""));
     }
 }
 
-// Переименовал для совместимости с HTML
-function joinRoom() { joinByCode(); }
+// Универсальная функция входа (и по кнопке, и по вводу)
+function joinRoom() {
+    const code = document.getElementById('joinId').value.toUpperCase().trim();
+    joinByCode(code);
+}
 
-function joinByCode(customCode) {
-    const code = customCode || document.getElementById('joinId').value.toUpperCase().trim();
+function joinByCode(code) {
     if (!code) return;
     conn = peer.connect(PRE + code);
     isHost = false;
@@ -99,8 +107,10 @@ function setupConnection() {
     conn.on('open', () => {
         document.getElementById('menu').style.display = 'none';
         document.getElementById('gameUI').style.display = 'flex';
+        document.getElementById('msgOverlay').style.display = 'flex';
         document.getElementById('overlayText').innerText = isHost ? "ИГРОК ПОДКЛЮЧИЛСЯ" : "ОЖИДАНИЕ ХОСТА...";
         if (!isHost) document.getElementById('roomCodeDisplay').innerText = "";
+        
         requestAnimationFrame(gameLoop);
     });
 
@@ -110,7 +120,8 @@ function setupConnection() {
             document.getElementById('msgOverlay').style.display = 'none';
         }
         if (isHost) {
-            game.p2.x = data.x; game.p2.y = 600 - data.y;
+            game.p2.x = data.x;
+            game.p2.y = 600 - data.y;
         } else {
             game = data.state;
             if (data.started) {
@@ -127,6 +138,8 @@ function startGame() {
     document.getElementById('msgOverlay').style.display = 'none';
     conn.send({ type: 'START' });
 }
+
+// --- ИГРОВАЯ ЛОГИКА ---
 
 const handleInput = (e) => {
     const rect = canvas.getBoundingClientRect();
@@ -146,49 +159,67 @@ canvas.addEventListener('touchmove', e => { e.preventDefault(); handleInput(e); 
 
 function update() {
     if (!isHost || !gameStarted) return;
+
     game.ball.x += game.ball.vx;
     game.ball.y += game.ball.vy;
+
     if (game.ball.x < 15 || game.ball.x > 385) game.ball.vx *= -1;
+    
     if (game.ball.y < 15 || game.ball.y > 585) {
         if (game.ball.x > 130 && game.ball.x < 270) {
             if (game.ball.y < 0) { game.score2++; resetBall(); }
             else if (game.ball.y > 600) { game.score1++; resetBall(); }
-        } else { game.ball.vy *= -1; }
+        } else {
+            game.ball.vy *= -1;
+        }
     }
+
     [game.p1, game.p2].forEach(p => {
         let dx = game.ball.x - p.x;
         let dy = game.ball.y - p.y;
-        if (Math.sqrt(dx*dx + dy*dy) < 38) {
+        let dist = Math.sqrt(dx*dx + dy*dy);
+        if (dist < 38) {
             let angle = Math.atan2(dy, dx);
             game.ball.vx = Math.cos(angle) * 8;
             game.ball.vy = Math.sin(angle) * 8;
         }
     });
-    game.ball.vx *= 0.98; game.ball.vy *= 0.98;
+
+    game.ball.vx *= 0.98;
+    game.ball.vy *= 0.98;
+
     if (conn) conn.send({ state: game, started: gameStarted });
 }
 
-function resetBall() { game.ball = { x: 200, y: 300, vx: 0, vy: 0 }; }
+function resetBall() {
+    game.ball = { x: 200, y: 300, vx: 0, vy: 0 };
+}
 
 function draw() {
     ctx.clearRect(0, 0, 400, 600);
-    ctx.strokeStyle = "#333"; ctx.lineWidth = 2;
+    ctx.strokeStyle = "#333";
+    ctx.lineWidth = 2;
     ctx.strokeRect(5, 5, 390, 590);
     ctx.beginPath(); ctx.moveTo(0, 300); ctx.lineTo(400, 300); ctx.stroke();
     ctx.strokeStyle = "#34c759"; ctx.lineWidth = 8;
     ctx.strokeRect(135, 0, 130, 5); ctx.strokeRect(135, 595, 130, 5);
+
     scoreDisplay.innerText = isHost ? `${game.score1} : ${game.score2}` : `${game.score2} : ${game.score1}`;
+
     let myPos = isHost ? game.p1 : {x: game.p2.x, y: 600 - game.p2.y};
     let opPos = isHost ? game.p2 : {x: game.p1.x, y: 600 - game.p1.y};
     let bPos = isHost ? game.ball : {x: game.ball.x, y: 600 - game.ball.y};
+
     ctx.fillStyle = "#007aff"; ctx.beginPath(); ctx.arc(myPos.x, myPos.y, 25, 0, 7); ctx.fill();
     ctx.fillStyle = "#ff3b30"; ctx.beginPath(); ctx.arc(opPos.x, opPos.y, 25, 0, 7); ctx.fill();
     ctx.fillStyle = "#fff"; ctx.beginPath(); ctx.arc(bPos.x, bPos.y, 12, 0, 7); ctx.fill();
 }
 
 function gameLoop() {
-    update(); draw();
+    update();
+    draw();
     requestAnimationFrame(gameLoop);
 }
 
+// Запуск при загрузке
 init();
