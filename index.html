@@ -3,19 +3,18 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Air Hockey FX Lobby System</title>
+    <title>Air Hockey FX Lobby</title>
     <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
     <style>
         body { background: #000; color: #fff; text-align: center; font-family: 'Segoe UI', sans-serif; margin: 0; overflow: hidden; touch-action: none; user-select: none; }
-        #menu { padding-top: 50px; height: 100vh; display: flex; flex-direction: column; align-items: center; background: radial-gradient(circle at center, #111 0%, #000 100%); overflow-y: auto; }
-        .btn { padding: 15px 45px; font-size: 18px; cursor: pointer; margin: 10px; border: none; border-radius: 50px; background: #007aff; color: white; font-weight: bold; box-shadow: 0 4px 15px rgba(0,122,255,0.4); text-transform: uppercase; transition: 0.3s; }
-        .btn:active { transform: scale(0.95); }
+        #menu { padding-top: 50px; height: 100vh; display: flex; flex-direction: column; align-items: center; background: radial-gradient(circle at center, #111 0%, #000 100%); }
+        .btn { padding: 15px 45px; font-size: 18px; cursor: pointer; margin: 10px; border: none; border-radius: 50px; background: #007aff; color: white; font-weight: bold; box-shadow: 0 4px 15px rgba(0,122,255,0.4); text-transform: uppercase; }
         input, select { padding: 12px; font-size: 16px; border-radius: 12px; border: 2px solid #333; background: #222; color: #fff; outline: none; margin: 5px; text-align: center; }
         
-        #lobby { width: 90%; max-width: 400px; margin-top: 20px; padding: 10px; background: rgba(255,255,255,0.05); border-radius: 20px; }
-        .room-item { background: #222; margin: 8px 0; padding: 12px; border-radius: 15px; display: flex; justify-content: space-between; align-items: center; border: 1px solid #333; }
-        .room-code { font-weight: bold; color: #34c759; letter-spacing: 2px; }
-        .btn-join-fast { padding: 8px 15px; background: #5856d6; border-radius: 10px; border: none; color: #fff; cursor: pointer; font-size: 12px; }
+        #lobby { width: 300px; margin-top: 20px; padding: 15px; background: rgba(255,255,255,0.05); border-radius: 20px; max-height: 200px; overflow-y: auto; }
+        .room-item { background: #222; margin: 5px 0; padding: 10px; border-radius: 12px; display: flex; justify-content: space-between; align-items: center; border: 1px solid #333; }
+        .room-code { color: #34c759; font-weight: bold; }
+        .btn-fast { padding: 5px 10px; background: #5856d6; border-radius: 8px; border: none; color: #fff; cursor: pointer; font-size: 11px; }
 
         #displayId { font-weight: 900; color: #34c759; display: block; }
         .id-large { font-size: 48px; text-shadow: 0 0 20px rgba(52, 199, 89, 0.6); margin: 10px 0; letter-spacing: 5px; }
@@ -33,16 +32,16 @@
 <body>
     <div id="menu">
         <h1>AIR HOCKEY FX</h1>
-        <div id="status">Подключение к серверу...</div>
+        <div id="status">Инициализация...</div>
         <div id="setupActions" style="display:none;">
             <button class="btn" onclick="createRoom()">СОЗДАТЬ</button>
             <br>
             <input type="text" id="joinId" placeholder="КОД" maxlength="5">
-            <button class="btn" style="background: #5856d6;" onclick="joinRoom()">ВОЙТИ</button>
+            <button class="btn" id="manualJoinBtn" style="background: #5856d6;" onclick="joinRoom()">ВОЙТИ</button>
             
             <div id="lobby">
-                <div style="font-size: 12px; opacity: 0.5; margin-bottom: 10px;">ДОСТУПНЫЕ ИГРЫ:</div>
-                <div id="roomList">Загрузка лобби...</div>
+                <div style="font-size: 10px; opacity: 0.5; margin-bottom: 8px;">ДОСТУПНЫЕ ИГРЫ:</div>
+                <div id="roomList">Поиск комнат...</div>
             </div>
         </div>
     </div>
@@ -71,11 +70,10 @@
         <div id="gameArea">
             <button id="resetBtn" class="btn-reset" onclick="manualBallReset()">🆘 RESET</button>
             <canvas id="gameCanvas" width="400" height="600"></canvas>
-            
             <div id="reconnectOverlay" class="overlay">
-                <h2 style="color:#ff3b30;">ПАУЗА / РАЗРЫВ</h2>
-                <p id="reconnectTimer">Ожидание игрока: 30с</p>
-                <button class="btn" onclick="attemptManualReconnect()">ВОССТАНОВИТЬ</button>
+                <h2 style="color:#ff3b30;">РАЗРЫВ</h2>
+                <p id="reconnectTimer">Ожидание: 30с</p>
+                <button class="btn" onclick="attemptManualReconnect()">RECONNECT</button>
             </div>
         </div>
     </div>
