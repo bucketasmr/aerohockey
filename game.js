@@ -5,13 +5,12 @@ const scoreDisplay = document.getElementById('scoreDisplay');
 const resetBtn = document.getElementById('resetBtn');
 const roomListUI = document.getElementById('roomList');
 const reconnectOverlay = document.getElementById('reconnectOverlay');
-const reconnectTimerText = document.getElementById('reconnectTimer');
 
 let peer, conn, isHost = false, gameStarted = false;
 let ballParticles = [], bgParticles = [], eventsFX = [];
 let lastMsgTime = Date.now();
 let currentRoomFullId = "";
-const PRE = "FX-"; // Префикс для фильтрации наших комнат в общем списке
+const PRE = "FX-"; 
 
 const skins = [
     { bg: "#1a1a1a", wall: "#444", p1: "#007aff", p2: "#ff3b30", ball: "#fff", line: "#333", trail: "#555", goalColor: "#34c759", fx: "none" },
@@ -36,41 +35,45 @@ class Particle {
     update() { this.x += this.vx; this.y += this.vy; this.life--; }
 }
 
-// Инициализация
-peer = new Peer();
-peer.on('open', () => {
-    document.getElementById('status').style.display = 'none';
-    document.getElementById('setupActions').style.display = 'block';
-    refreshLobby();
-});
+// Инициализация PeerJS
+function initPeer() {
+    peer = new Peer();
+    peer.on('open', (id) => {
+        document.getElementById('status').style.display = 'none';
+        document.getElementById('setupActions').style.display = 'block';
+        refreshLobby();
+    });
+    peer.on('error', (err) => {
+        console.error(err);
+        if(err.type === 'peer-unavailable') { alert("Комната не найдена"); }
+    });
+}
 
-// Система Лобби (Поиск комнат)
+// Логика Лобби
 function refreshLobby() {
     if (!peer || peer.destroyed) return;
     peer.listAllPeers((peers) => {
+        if (!peers) { roomListUI.innerText = "Сервер скрыл список"; return; }
         const rooms = peers.filter(id => id.startsWith(PRE));
-        roomListUI.innerHTML = rooms.length ? "" : "Нет активных игр";
+        roomListUI.innerHTML = rooms.length ? "" : "Нет активных комнат";
         rooms.forEach(id => {
             const code = id.replace(PRE, "");
             const div = document.createElement('div');
             div.className = 'room-item';
-            div.innerHTML = `<span class="room-code">${code}</span>
-                             <button class="btn-join-fast" onclick="fastJoin('${id}')">ПОДКЛЮЧИТЬСЯ</button>`;
+            div.innerHTML = `<span class="room-code">${code}</span><button class="btn-fast" onclick="autoJoin('${id}')">ПОДКЛЮЧИТЬСЯ</button>`;
             roomListUI.appendChild(div);
         });
     });
 }
-setInterval(refreshLobby, 5000); // Обновлять список каждые 5 сек
+setInterval(refreshLobby, 5000);
 
-function fastJoin(fullId) {
-    const input = document.getElementById('joinId');
+function autoJoin(fullId) {
     const code = fullId.replace(PRE, "");
-    input.value = code;
-    input.style.borderColor = "#34c759";
-    setTimeout(joinRoom, 1000); // Автоматический вход через 1 сек
+    document.getElementById('joinId').value = code;
+    setTimeout(() => { document.getElementById('manualJoinBtn').click(); }, 1000);
 }
 
-function changeSkin(val) { if(isHost) game.skin = parseInt(val); ballParticles = []; bgParticles = []; eventsFX = []; }
+function changeSkin(val) { if(isHost) game.skin = parseInt(val); }
 
 function createRoom() {
     isHost = true;
@@ -80,11 +83,8 @@ function createRoom() {
     setTimeout(() => {
         peer = new Peer(currentRoomFullId);
         peer.on('open', id => { showUI(shortId); resetBtn.style.display = 'block'; });
-        peer.on('connection', c => {
-            conn = c;
-            setupConnEvents();
-        });
-    }, 200);
+        peer.on('connection', c => { conn = c; bindConn(); });
+    }, 300);
 }
 
 function joinRoom() {
@@ -93,10 +93,10 @@ function joinRoom() {
     isHost = false;
     currentRoomFullId = PRE + code;
     conn = peer.connect(currentRoomFullId);
-    setupConnEvents();
+    bindConn();
 }
 
-function setupConnEvents() {
+function bindConn() {
     conn.on('open', () => {
         lastMsgTime = Date.now();
         reconnectOverlay.style.display = 'none';
@@ -111,33 +111,16 @@ function setupConnEvents() {
         lastMsgTime = Date.now();
         if (data.type === 'START') setGameStartedUI();
         else if (isHost) { game.p2.x = data.x; game.p2.y = 600 - data.y; }
-        else { game = data.state; gameStarted = data.started; if(gameStarted) setGameStartedUI(); }
+        else { game = data.state; if(data.started && !gameStarted) setGameStartedUI(); }
     });
 }
 
-function attemptManualReconnect() {
-    if(!isHost) {
-        if(conn) conn.close();
-        conn = peer.connect(currentRoomFullId);
-        setupConnEvents();
-    }
-}
-
 function showUI(id) { document.getElementById('menu').style.display = 'none'; document.getElementById('gameUI').style.display = 'block'; displayId.innerText = id; }
-
-function setupLoops() {
-    document.getElementById('gameArea').style.display = 'block';
-    requestAnimationFrame(gameLoop);
-}
-
-function setGameStartedUI() {
-    gameStarted = true;
-    displayId.classList.remove('id-large');
-    displayId.classList.add('id-small');
-}
+function setupLoops() { requestAnimationFrame(gameLoop); }
+function setGameStartedUI() { gameStarted = true; displayId.classList.replace('id-large', 'id-small'); }
 
 function sendStartSignal() {
-    setGameStartedUI();
+    gameStarted = true; setGameStartedUI();
     document.getElementById('hostControls').style.display = 'none';
     setInterval(() => { if(conn && conn.open) conn.send({ type: 'START' }); }, 500);
 }
@@ -160,51 +143,33 @@ canvas.addEventListener('touchmove', e => { e.preventDefault(); handleInput(e); 
 function update() {
     if (!isHost || !gameStarted) return;
     game.ball.x += game.ball.vx; game.ball.y += game.ball.vy;
-    if (game.ball.x < 16 || game.ball.x > 384) { game.ball.x = game.ball.x < 16 ? 16 : 384; game.ball.vx *= -1; }
+    if (game.ball.x < 16 || game.ball.x > 384) { game.ball.x = game.ball.x < 16 ? 16 : 384; game.ball.vx *= -0.8; }
     if (game.ball.y < 16) {
         if (game.ball.x > 135 && game.ball.x < 265) { if (game.ball.y < -20) { game.score1++; manualBallReset(); } }
-        else { game.ball.y = 16; game.ball.vy *= -1; }
+        else { game.ball.y = 16; game.ball.vy *= -0.8; }
     }
     if (game.ball.y > 584) {
         if (game.ball.x > 135 && game.ball.x < 265) { if (game.ball.y > 620) { game.score2++; manualBallReset(); } }
-        else { game.ball.y = 584; game.ball.vy *= -1; }
+        else { game.ball.y = 584; game.ball.vy *= -0.8; }
     }
     [game.p1, game.p2].forEach(p => {
         let dx = game.ball.x - p.x, dy = game.ball.y - p.y, d = Math.sqrt(dx*dx+dy*dy);
         if (d < 37) {
-            let a = Math.atan2(dy, dx), s = Math.min(Math.sqrt(game.ball.vx**2+game.ball.vy**2)+6, 15);
+            let a = Math.atan2(dy, dx), s = Math.min(Math.sqrt(game.ball.vx**2+game.ball.vy**2)+7, 15);
             game.ball.vx = Math.cos(a)*s; game.ball.vy = Math.sin(a)*s;
-            game.ball.x = p.x+Math.cos(a)*38; game.ball.y = p.y+Math.sin(a)*38;
         }
     });
-    game.ball.vx *= 0.988; game.ball.vy *= 0.988;
-    if (conn && conn.open) conn.send({ state: game, started: gameStarted });
-}
-
-function drawFX(s) {
-    const rB = isHost ? game.ball : { x: game.ball.x, y: 600 - game.ball.y };
-    if (Math.abs(rB.x - lastBallPos.x) + Math.abs(rB.y - lastBallPos.y) > 2) {
-        ballParticles.push(new Particle(rB.x, rB.y, s.trail, Math.random()*4, -(rB.x-lastBallPos.x)*0.2, -(rB.y-lastBallPos.y)*0.2, 20));
-    }
-    lastBallPos = { x: rB.x, y: rB.y };
-    [bgParticles, ballParticles].forEach(arr => {
-        for(let i=arr.length-1; i>=0; i--) {
-            arr[i].update();
-            if(arr[i].life <= 0) arr.splice(i, 1);
-            else { ctx.globalAlpha = arr[i].life/arr[i].maxLife; ctx.fillStyle = arr[i].color; ctx.beginPath(); ctx.arc(arr[i].x, arr[i].y, arr[i].size, 0, 7); ctx.fill(); }
-        }
-    });
-    ctx.globalAlpha = 1;
+    game.ball.vx *= 0.99; game.ball.vy *= 0.99;
+    if (conn && conn.open) conn.send({ state: game, started: true });
 }
 
 function draw() {
     const s = skins[game.skin] || skins[0];
     ctx.fillStyle = s.bg; ctx.fillRect(0, 0, 400, 600);
-    drawFX(s);
+    
     ctx.strokeStyle = s.line; ctx.lineWidth = 2;
     ctx.beginPath(); ctx.arc(200, 300, 40, 0, 7); ctx.stroke();
     ctx.beginPath(); ctx.moveTo(0, 300); ctx.lineTo(400, 300); ctx.stroke();
-    ctx.strokeStyle = s.wall; ctx.lineWidth = 6; ctx.strokeRect(3, 3, 394, 594);
     
     ctx.strokeStyle = s.goalColor; ctx.lineWidth = 10;
     ctx.beginPath(); ctx.moveTo(135, 5); ctx.lineTo(265, 5); ctx.stroke();
@@ -221,15 +186,9 @@ function draw() {
 }
 
 function gameLoop() {
-    const now = Date.now();
-    // Логика таймаута соединения (30 секунд)
-    if (gameStarted && now - lastMsgTime > 3000) {
-        reconnectOverlay.style.display = 'flex';
-        let timeLeft = Math.max(0, 30 - Math.floor((now - lastMsgTime) / 1000));
-        reconnectTimerText.innerText = `Ожидание игрока: ${timeLeft}с`;
-    } else {
-        update();
-    }
-    draw();
+    if (gameStarted && Date.now() - lastMsgTime > 3000) reconnectOverlay.style.display = 'flex';
+    else { update(); draw(); }
     requestAnimationFrame(gameLoop);
 }
+
+initPeer();
