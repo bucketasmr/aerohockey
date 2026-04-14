@@ -1,108 +1,236 @@
 const canvas = document.getElementById('gameCanvas');
 const ctx = canvas.getContext('2d');
-const displayId = document.getElementById('displayId');
 const scoreDisplay = document.getElementById('scoreDisplay');
-const resetBtn = document.getElementById('resetBtn');
+const roomListUI = document.getElementById('roomList');
+const qJoinBtn = document.getElementById('quickJoinBtn');
 
 let peer, conn, isHost = false, gameStarted = false;
-let ballParticles = [], bgParticles = [], eventsFX = [];
-let lastEventTime = Date.now();
+let myId = "";
+let fastRoomId = null;
+const PRE = "FXHOCKEY-"; 
 
-const skins = [
-    { bg: "#1a1a1a", wall: "#444", p1: "#007aff", p2: "#ff3b30", ball: "#fff", line: "#333", trail: "#555", goalColor: "#34c759", fx: "none" },
-    { bg: "#000", wall: "#0ff", p1: "#0f0", p2: "#f0f", ball: "#fff", line: "#0ff", trail: "#fff", glow: 15, goalColor: "#ff0", fx: "neon" },
-    { bg: "#1a0f2e", wall: "#ff71ce", p1: "#01cdfe", p2: "#b967ff", ball: "#fff", line: "#ff71ce", trail: "#ff71ce", goalColor: "#0f0", fx: "retro" },
-    { bg: "#2d5a27", wall: "#1e3d1a", p1: "#007aff", p2: "#ff3b30", ball: "#fff", line: "rgba(255,255,255,0.2)", trail: "rgba(255,255,255,0.4)", goalColor: "#fff", fx: "grass" },
-    { bg: "#081c08", wall: "#2e7d32", p1: "#fb8c00", p2: "#4e342e", ball: "#fff", line: "#4caf50", trail: "#81c784", goalColor: "#e91e63", fx: "forest" },
-    { bg: "#140d02", wall: "#5d4037", p1: "#ffd54f", p2: "#3e2723", ball: "#ffeb3b", line: "#6d4c41", trail: "#ffd54f", goalColor: "#03a9f4", fx: "tomb" },
-    { bg: "#0d0000", wall: "#800", p1: "#ffeb3b", p2: "#d50000", ball: "#ff9100", line: "#ff4500", trail: "#ff4500", glow: 15, goalColor: "#fff", fx: "lava" },
-    { bg: "#02020a", wall: "#1a237e", p1: "#00e5ff", p2: "#d500f9", ball: "#e0e0e0", line: "rgba(255,255,255,0.1)", trail: "#fff", goalColor: "#fee715", fx: "space" },
-    { bg: "#010816", wall: "#00ff41", p1: "#fee715", p2: "#ff00a0", ball: "#00ff41", line: "#001a00", trail: "#00ff41", goalColor: "#fff", fx: "cyber" }
-];
+let game = {
+    p1: { x: 200, y: 530 },
+    p2: { x: 200, y: 70 },
+    ball: { x: 200, y: 300, vx: 0, vy: 0 },
+    score1: 0, score2: 0
+};
 
-let game = { p1: { x: 200, y: 530 }, p2: { x: 200, y: 70 }, ball: { x: 200, y: 300, vx: 0, vy: 0 }, score1: 0, score2: 0, skin: 0 };
-let lastBallPos = { x: 200, y: 300 };
-
-class Particle {
-    constructor(x, y, color, size, vx, vy, life) {
-        this.x = x; this.y = y; this.color = color; this.size = size;
-        this.vx = vx; this.vy = vy; this.life = life; this.maxLife = life;
+// --- ПЕРЕВОДЫ ---
+const translations = {
+    ru: {
+        loading: "Загрузка системы...",
+        noRooms: "НЕТ СВОБОДНЫХ ИГР",
+        quickJoin: "БЫСТРАЯ ИГРА",
+        create: "СОЗДАТЬ",
+        join: "ВОЙТИ",
+        code: "КОД",
+        activeRooms: "АКТИВНЫЕ КОМНАТЫ:",
+        searching: "Поиск игроков...",
+        start: "СТАРТ",
+        toMenu: "В МЕНЮ",
+        waitingPlayer: "ОЖИДАНИЕ ИГРОКА",
+        connected: "ИГРОК ПОДКЛЮЧИЛСЯ",
+        waitingHost: "ОЖИДАНИЕ ХОСТА...",
+        errorRoom: "Ошибка: Комната не найдена.",
+        enterBtn: "ВХОД"
+    },
+    uk: {
+        loading: "Завантаження системи...",
+        noRooms: "НЕМАЄ ВІЛЬНИХ ІГОР",
+        quickJoin: "ШВИДКА ГРА",
+        create: "СТВОРИТИ",
+        join: "УВІЙТИ",
+        code: "КОД",
+        activeRooms: "АКТИВНІ КІМНАТИ:",
+        searching: "Пошук гравців...",
+        start: "СТАРТ",
+        toMenu: "В МЕНЮ",
+        waitingPlayer: "ОЧІКУВАННЯ ГРАВЦЯ",
+        connected: "ГРАВЕЦЬ ПРИЄДНАВСЯ",
+        waitingHost: "ОЧІКУВАННЯ ХОСТА...",
+        errorRoom: "Помилка: Кімнату не знайдено.",
+        enterBtn: "ВХІД"
+    },
+    en: {
+        loading: "System loading...",
+        noRooms: "NO FREE ROOMS",
+        quickJoin: "QUICK JOIN",
+        create: "CREATE",
+        join: "JOIN",
+        code: "CODE",
+        activeRooms: "ACTIVE ROOMS:",
+        searching: "Searching for players...",
+        start: "START",
+        toMenu: "MENU",
+        waitingPlayer: "WAITING FOR PLAYER",
+        connected: "PLAYER CONNECTED",
+        waitingHost: "WAITING FOR HOST...",
+        errorRoom: "Error: Room not found.",
+        enterBtn: "ENTER"
     }
-    update() { this.x += this.vx; this.y += this.vy; this.life--; }
+};
+
+let currentLang = 'ru';
+
+function applyLanguage(lang) {
+    currentLang = lang;
+    document.getElementById('langSelect').value = lang;
+    
+    // Перевод всех элементов с атрибутом data-i18n
+    document.querySelectorAll('[data-i18n]').forEach(el => {
+        const key = el.getAttribute('data-i18n');
+        if (translations[lang][key]) el.innerText = translations[lang][key];
+    });
+
+    // Перевод плейсхолдеров
+    document.querySelectorAll('[data-i18n-placeholder]').forEach(el => {
+        const key = el.getAttribute('data-i18n-placeholder');
+        if (translations[lang][key]) el.placeholder = translations[lang][key];
+    });
+
+    refreshLobby(); // Обновить текст на кнопках в списке
 }
 
-peer = new Peer();
-peer.on('open', () => document.getElementById('setupActions').style.display = 'block');
+function changeLanguage(lang) {
+    applyLanguage(lang);
+    localStorage.setItem('prefLang', lang);
+}
 
-function changeSkin(val) { if(isHost) game.skin = parseInt(val); ballParticles = []; bgParticles = []; eventsFX = []; }
+// --- СЕТЕВАЯ ЛОГИКА ---
+
+function init() {
+    // Определение языка
+    const savedLang = localStorage.getItem('prefLang');
+    const systemLang = navigator.language.split('-')[0];
+    const targetLang = savedLang || (translations[systemLang] ? systemLang : 'en');
+    applyLanguage(targetLang);
+
+    myId = Math.random().toString(36).substring(2, 7).toUpperCase();
+    peer = new Peer(PRE + myId);
+
+    peer.on('open', (id) => {
+        document.getElementById('status').style.display = 'none';
+        document.getElementById('setupActions').style.display = 'block';
+        setInterval(refreshLobby, 3000); 
+    });
+
+    peer.on('connection', (c) => {
+        if (conn) return; 
+        conn = c;
+        isHost = true;
+        setupConnection();
+    });
+
+    peer.on('error', (err) => {
+        if (err.type === 'peer-unavailable') alert(translations[currentLang].errorRoom);
+    });
+}
+
+function refreshLobby() {
+    if (gameStarted || !peer || peer.destroyed) return;
+
+    peer.listAllPeers((peers) => {
+        if (!peers) return;
+        const rooms = peers.filter(id => id.startsWith(PRE) && id !== (PRE + myId));
+
+        if (rooms.length > 0) {
+            fastRoomId = rooms[0];
+            qJoinBtn.style.background = "#34c759";
+            qJoinBtn.innerText = `${translations[currentLang].quickJoin} (${rooms.length})`;
+            
+            roomListUI.innerHTML = "";
+            rooms.forEach(id => {
+                const code = id.replace(PRE, "");
+                const div = document.createElement('div');
+                div.className = 'room-item';
+                div.innerHTML = `<span class="room-code">${code}</span>
+                                 <button class="btn btn-mini" onclick="joinByCode('${code}')">${translations[currentLang].enterBtn}</button>`;
+                roomListUI.appendChild(div);
+            });
+        } else {
+            fastRoomId = null;
+            qJoinBtn.style.background = "#ff3b30";
+            qJoinBtn.innerText = translations[currentLang].noRooms;
+            roomListUI.innerHTML = `<div style='opacity:0.5'>${translations[currentLang].searching}</div>`;
+        }
+    });
+}
 
 function createRoom() {
     isHost = true;
-    const shortId = Math.random().toString(36).substring(2, 7).toUpperCase();
-    peer.destroy();
-    setTimeout(() => {
-        peer = new Peer(shortId);
-        peer.on('open', id => { showUI(id); resetBtn.style.display = 'block'; });
-        peer.on('connection', c => {
-            conn = c;
-            conn.on('open', () => {
-                document.getElementById('hostControls').style.display = 'block';
-                document.getElementById('skinSelectorContainer').style.display = 'block';
-                setupLoops();
-            });
-        });
-    }, 200);
+    document.getElementById('menu').style.display = 'none';
+    document.getElementById('gameUI').style.display = 'flex';
+    document.getElementById('hostControls').style.display = 'block';
+    document.getElementById('roomCodeDisplay').innerText = myId;
+}
+
+function quickJoin() {
+    if (fastRoomId) {
+        joinByCode(fastRoomId.replace(PRE, ""));
+    }
 }
 
 function joinRoom() {
-    const id = document.getElementById('joinId').value.toUpperCase().trim();
-    if(id.length < 3) return;
+    const code = document.getElementById('joinId').value.toUpperCase().trim();
+    joinByCode(code);
+}
+
+function joinByCode(code) {
+    if (!code) return;
+    conn = peer.connect(PRE + code);
     isHost = false;
-    peer.destroy();
-    setTimeout(() => {
-        peer = new Peer();
-        peer.on('open', () => {
-            conn = peer.connect(id);
-            conn.on('open', () => { showUI(id); setupLoops(); });
-        });
-    }, 200);
+    setupConnection();
 }
 
-function showUI(id) { document.getElementById('menu').style.display = 'none'; document.getElementById('gameUI').style.display = 'block'; displayId.innerText = id; }
-
-function setupLoops() {
-    document.getElementById('gameArea').style.display = 'block';
-    conn.on('data', data => {
-        if (data.type === 'START') setGameStartedUI();
-        else if (isHost) { game.p2.x = data.x; game.p2.y = 600 - data.y; }
-        else { game = data.state; gameStarted = data.started; if(gameStarted) setGameStartedUI(); }
+function setupConnection() {
+    conn.on('open', () => {
+        document.getElementById('menu').style.display = 'none';
+        document.getElementById('gameUI').style.display = 'flex';
+        document.getElementById('msgOverlay').style.display = 'flex';
+        document.getElementById('overlayText').innerText = isHost ? translations[currentLang].connected : translations[currentLang].waitingHost;
+        if (!isHost) document.getElementById('roomCodeDisplay').innerText = "";
+        requestAnimationFrame(gameLoop);
     });
-    requestAnimationFrame(gameLoop);
+
+    conn.on('data', (data) => {
+        if (data.type === 'START') {
+            gameStarted = true;
+            document.getElementById('msgOverlay').style.display = 'none';
+        }
+        if (isHost) {
+            game.p2.x = data.x;
+            game.p2.y = 600 - data.y;
+        } else {
+            game = data.state;
+            if (data.started) {
+                gameStarted = true;
+                document.getElementById('msgOverlay').style.display = 'none';
+            }
+        }
+    });
 }
 
-function setGameStartedUI() {
+function startGame() {
+    if (!conn) return;
     gameStarted = true;
-    document.getElementById('status').style.display = 'none';
-    displayId.classList.remove('id-large');
-    displayId.classList.add('id-small');
+    document.getElementById('msgOverlay').style.display = 'none';
+    conn.send({ type: 'START' });
 }
 
-function sendStartSignal() {
-    setGameStartedUI();
-    document.getElementById('hostControls').style.display = 'none';
-    setInterval(() => { if(conn && conn.open) conn.send({ type: 'START' }); }, 500);
-}
-
-function manualBallReset() { if(isHost) game.ball = { x: 200, y: 300, vx: 0, vy: 0 }; }
+// --- ИГРОВАЯ ЛОГИКА ---
 
 const handleInput = (e) => {
-    if(!gameStarted) return;
     const rect = canvas.getBoundingClientRect();
     const t = e.touches ? e.touches[0] : e;
     const x = (t.clientX - rect.left) * (400 / rect.width);
     const y = (t.clientY - rect.top) * (600 / rect.height);
-    if (isHost) { game.p1.x = Math.max(25, Math.min(375, x)); game.p1.y = Math.max(320, Math.min(575, y)); }
-    else if (conn.open) conn.send({ x: Math.max(25, Math.min(375, x)), y: Math.max(320, Math.min(575, y)) });
+
+    if (isHost) {
+        game.p1.x = x; game.p1.y = Math.max(320, y);
+    } else if (conn && conn.open) {
+        conn.send({ x, y });
+    }
 };
 
 canvas.addEventListener('mousemove', handleInput);
@@ -110,95 +238,49 @@ canvas.addEventListener('touchmove', e => { e.preventDefault(); handleInput(e); 
 
 function update() {
     if (!isHost || !gameStarted) return;
-    game.ball.x += game.ball.vx; game.ball.y += game.ball.vy;
-    if (game.ball.x < 16 || game.ball.x > 384) { game.ball.x = game.ball.x < 16 ? 16 : 384; game.ball.vx *= -1; }
-    if (game.ball.y < 16) {
-        if (game.ball.x > 135 && game.ball.x < 265) { if (game.ball.y < -20) { game.score1++; manualBallReset(); } }
-        else { game.ball.y = 16; game.ball.vy *= -1; }
-    }
-    if (game.ball.y > 584) {
-        if (game.ball.x > 135 && game.ball.x < 265) { if (game.ball.y > 620) { game.score2++; manualBallReset(); } }
-        else { game.ball.y = 584; game.ball.vy *= -1; }
+    game.ball.x += game.ball.vx;
+    game.ball.y += game.ball.vy;
+    if (game.ball.x < 15 || game.ball.x > 385) game.ball.vx *= -1;
+    if (game.ball.y < 15 || game.ball.y > 585) {
+        if (game.ball.x > 130 && game.ball.x < 270) {
+            if (game.ball.y < 0) { game.score2++; resetBall(); }
+            else if (game.ball.y > 600) { game.score1++; resetBall(); }
+        } else { game.ball.vy *= -1; }
     }
     [game.p1, game.p2].forEach(p => {
-        let dx = game.ball.x - p.x, dy = game.ball.y - p.y, d = Math.sqrt(dx*dx+dy*dy);
-        if (d < 37) {
-            let a = Math.atan2(dy, dx), s = Math.min(Math.sqrt(game.ball.vx**2+game.ball.vy**2)+6, 15);
-            game.ball.vx = Math.cos(a)*s; game.ball.vy = Math.sin(a)*s;
-            game.ball.x = p.x+Math.cos(a)*38; game.ball.y = p.y+Math.sin(a)*38;
+        let dx = game.ball.x - p.x;
+        let dy = game.ball.y - p.y;
+        if (Math.sqrt(dx*dx + dy*dy) < 38) {
+            let angle = Math.atan2(dy, dx);
+            game.ball.vx = Math.cos(angle) * 8;
+            game.ball.vy = Math.sin(angle) * 8;
         }
     });
-    game.ball.vx *= 0.988; game.ball.vy *= 0.988;
-    if (conn.open) conn.send({ state: game, started: gameStarted });
+    game.ball.vx *= 0.98; game.ball.vy *= 0.98;
+    if (conn) conn.send({ state: game, started: gameStarted });
 }
 
-function drawFX(s) {
-    const rB = isHost ? game.ball : { x: game.ball.x, y: 600 - game.ball.y };
-    if (Math.abs(rB.x - lastBallPos.x) + Math.abs(rB.y - lastBallPos.y) > 2) {
-        ballParticles.push(new Particle(rB.x, rB.y, s.trail, Math.random()*4, -(rB.x-lastBallPos.x)*0.2, -(rB.y-lastBallPos.y)*0.2, 20));
-    }
-    lastBallPos = { x: rB.x, y: rB.y };
-
-    if (s.fx === 'space') { if(Math.random() > 0.98) bgParticles.push(new Particle(Math.random()*400, 0, "#fff", 1, 0.2, 0.6, 150)); }
-    else if (s.fx === 'lava') { if(Math.random() > 0.95) bgParticles.push(new Particle(Math.random()*400, 600, "#ff4500", 1, 0, -1, 60)); }
-    else if (s.fx === 'forest') { if(Math.random() > 0.96) bgParticles.push(new Particle(Math.random()*400, 600, "#aaffaa", 1, (Math.random()-0.5), -0.5, 100)); }
-
-    if (Date.now() - lastEventTime > 10000) {
-        if (Math.random() > 0.5) { eventsFX.push({ x: -100, y: Math.random()*600, type: s.fx, progress: 0 }); lastEventTime = Date.now(); }
-    }
-    eventsFX.forEach((ev, i) => {
-        ev.progress += 0.005; ctx.globalAlpha = Math.sin(ev.progress * Math.PI) * 0.2;
-        ctx.fillStyle = "#fff"; ctx.beginPath(); ctx.arc(ev.progress*600, ev.y, 50, 0, 7); ctx.fill();
-        if (ev.progress >= 1) eventsFX.splice(i, 1);
-    });
-
-    [bgParticles, ballParticles].forEach(arr => {
-        for(let i=arr.length-1; i>=0; i--) {
-            arr[i].update();
-            if(arr[i].life <= 0) arr.splice(i, 1);
-            else { ctx.globalAlpha = arr[i].life/arr[i].maxLife; ctx.fillStyle = arr[i].color; ctx.beginPath(); ctx.arc(arr[i].x, arr[i].y, arr[i].size, 0, 7); ctx.fill(); }
-        }
-    });
-    ctx.globalAlpha = 1;
-}
+function resetBall() { game.ball = { x: 200, y: 300, vx: 0, vy: 0 }; }
 
 function draw() {
-    const s = skins[game.skin] || skins[0];
-    ctx.fillStyle = s.bg; ctx.fillRect(0, 0, 400, 600);
-    if (s.fx === 'grass') { for(let i=0; i<600; i+=60) { ctx.fillStyle = i%120===0 ? "#2d5a27" : "#32622c"; ctx.fillRect(5, i+5, 390, 50); } }
-    
-    drawFX(s);
-
-    // Разметка
-    ctx.strokeStyle = s.line; ctx.lineWidth = 2;
-    ctx.beginPath(); ctx.arc(200, 300, 40, 0, 7); ctx.stroke();
+    ctx.clearRect(0, 0, 400, 600);
+    ctx.strokeStyle = "#333"; ctx.lineWidth = 2;
+    ctx.strokeRect(5, 5, 390, 590);
     ctx.beginPath(); ctx.moveTo(0, 300); ctx.lineTo(400, 300); ctx.stroke();
-    
-    // Борта
-    ctx.strokeStyle = s.wall; ctx.lineWidth = 6;
-    ctx.strokeRect(3, 3, 394, 594);
-    
-    // ГЛАВНОЕ: Видимые ворота
-    ctx.lineCap = "round";
-    ctx.strokeStyle = s.goalColor;
-    ctx.shadowBlur = 10; ctx.shadowColor = s.goalColor;
-    ctx.lineWidth = 10;
-    // Верхние
-    ctx.beginPath(); ctx.moveTo(135, 5); ctx.lineTo(265, 5); ctx.stroke();
-    // Нижние
-    ctx.beginPath(); ctx.moveTo(135, 595); ctx.lineTo(265, 595); ctx.stroke();
-    ctx.shadowBlur = 0;
-
+    ctx.strokeStyle = "#34c759"; ctx.lineWidth = 8;
+    ctx.strokeRect(135, 0, 130, 5); ctx.strokeRect(135, 595, 130, 5);
     scoreDisplay.innerText = isHost ? `${game.score1} : ${game.score2}` : `${game.score2} : ${game.score1}`;
-    let my = isHost ? game.p1 : {x: game.p2.x, y: 600 - game.p2.y}, op = isHost ? game.p2 : {x: game.p1.x, y: 600 - game.p1.y};
-    
-    if(s.glow) { ctx.shadowBlur = s.glow; ctx.shadowColor = s.wall; }
-    ctx.fillStyle = s.p1; ctx.beginPath(); ctx.arc(my.x, my.y, 25, 0, 7); ctx.fill();
-    ctx.fillStyle = s.p2; ctx.beginPath(); ctx.arc(op.x, op.y, 25, 0, 7); ctx.fill();
-    ctx.fillStyle = s.ball; ctx.beginPath(); ctx.arc(game.ball.x, isHost?game.ball.y:600-game.ball.y, 12, 0, 7); ctx.fill();
-    ctx.shadowBlur = 0;
-
-    if (!gameStarted) { ctx.fillStyle = "rgba(0,0,0,0.8)"; ctx.fillRect(0,0,400,600); ctx.fillStyle = "#fff"; ctx.fillText(isHost?"ЖМИ СТАРТ":"ЖДЕМ ХОСТА...", 200, 300); }
+    let myPos = isHost ? game.p1 : {x: game.p2.x, y: 600 - game.p2.y};
+    let opPos = isHost ? game.p2 : {x: game.p1.x, y: 600 - game.p1.y};
+    let bPos = isHost ? game.ball : {x: game.ball.x, y: 600 - game.ball.y};
+    ctx.fillStyle = "#007aff"; ctx.beginPath(); ctx.arc(myPos.x, myPos.y, 25, 0, 7); ctx.fill();
+    ctx.fillStyle = "#ff3b30"; ctx.beginPath(); ctx.arc(opPos.x, opPos.y, 25, 0, 7); ctx.fill();
+    ctx.fillStyle = "#fff"; ctx.beginPath(); ctx.arc(bPos.x, bPos.y, 12, 0, 7); ctx.fill();
 }
 
-function gameLoop() { update(); draw(); if (conn && conn.open) requestAnimationFrame(gameLoop); }
+function gameLoop() {
+    update(); draw();
+    requestAnimationFrame(gameLoop);
+}
+
+init();
