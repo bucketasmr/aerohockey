@@ -1,10 +1,11 @@
 const canvas = document.getElementById('gameCanvas');
 const ctx = canvas.getContext('2d');
 const scoreDisplay = document.getElementById('scoreDisplay');
-const displayId = document.getElementById('displayId');
+const resumeBtn = document.getElementById('resumeBtn');
 
 let peer, conn, isHost = false, gameStarted = false;
-let dataReceived = false; // Флаг для предотвращения мерцания "Wait"
+let lastPacketTime = Date.now();
+let isPaused = false;
 let lang = localStorage.getItem('gameLang') || 'ru';
 
 const dict = {
@@ -27,18 +28,34 @@ const skins = [
 
 let game = { p1: { x: 200, y: 530 }, p2: { x: 200, y: 70 }, ball: { x: 200, y: 300, vx: 0, vy: 0 }, score1: 0, score2: 0, skin: 0 };
 
-const peerOptions = { config: { 'iceServers': [{ url: 'stun:stun.l.google.com:19302' }, { url: 'stun:stun1.l.google.com:19302' }] } };
+// Настройки для пробития VPN между Украиной и США
+const peerOptions = {
+    config: {
+        'iceServers': [
+            { url: 'stun:stun.l.google.com:19302' },
+            { url: 'stun:stun1.l.google.com:19302' },
+            { url: 'stun:stun2.l.google.com:19302' },
+            { url: 'stun:stun3.l.google.com:19302' },
+            { url: 'stun:stun.ekiga.net' },
+            { url: 'stun:stun.ideasip.com' }
+        ]
+    }
+};
 
-peer = new Peer(peerOptions);
-peer.on('open', () => {
-    document.getElementById('status').innerText = dict[lang].loading;
-    document.getElementById('setupActions').style.display = 'block';
-    applyTranslation();
-});
+function initPeer() {
+    peer = new Peer(peerOptions);
+    peer.on('open', () => {
+        document.getElementById('status').innerText = dict[lang].loading;
+        document.getElementById('setupActions').style.display = 'block';
+        applyTranslation();
+    });
+    peer.on('error', (err) => { console.error(err); initPeer(); });
+}
+
+initPeer();
 
 function applyTranslation() {
     document.querySelectorAll('[data-i18n]').forEach(el => el.innerText = dict[lang][el.getAttribute('data-i18n')]);
-    document.getElementById('langSelect').value = lang;
 }
 function changeLanguage(v) { lang = v; localStorage.setItem('gameLang', v); applyTranslation(); }
 function changeSkin(v) { if(isHost) game.skin = parseInt(v); }
@@ -49,7 +66,11 @@ function createRoom() {
     peer.destroy();
     setTimeout(() => {
         peer = new Peer(id, peerOptions);
-        peer.on('open', resId => showUI(resId));
+        peer.on('open', resId => {
+            document.getElementById('menu').style.display = 'none';
+            document.getElementById('gameUI').style.display = 'flex';
+            document.getElementById('displayId').innerText = "ID: " + resId;
+        });
         peer.on('connection', c => {
             conn = c;
             conn.on('open', () => {
@@ -62,32 +83,35 @@ function createRoom() {
 
 function joinRoom() {
     const id = document.getElementById('joinId').value.toUpperCase().trim();
+    if(!id) return;
     isHost = false;
     peer.destroy();
     setTimeout(() => {
         peer = new Peer(peerOptions);
         peer.on('open', () => {
             conn = peer.connect(id, { reliable: false });
-            conn.on('open', () => { showUI(id); setupLoops(); });
+            conn.on('open', () => {
+                document.getElementById('menu').style.display = 'none';
+                document.getElementById('gameUI').style.display = 'flex';
+                document.getElementById('displayId').innerText = "CONNECTED TO: " + id;
+                setupLoops();
+            });
         });
     }, 300);
 }
 
-function showUI(id) {
-    document.getElementById('menu').style.display = 'none';
-    document.getElementById('gameUI').style.display = 'flex';
-    displayId.innerText = id;
-}
-
 function setupLoops() {
     conn.on('data', data => {
-        dataReceived = true; // Данные пошли, убираем надпись "Wait"
-        if (data.type === 'START') gameStarted = true;
+        lastPacketTime = Date.now();
+        if (data.type === 'START') { gameStarted = true; isPaused = false; resumeBtn.style.display = 'none'; }
+        if (data.type === 'PAUSE') { isPaused = true; }
+        
         if (isHost) { 
             if(data.x) { game.p2.x = data.x; game.p2.y = 600 - data.y; } 
         } else { 
             if(data.state) game = data.state; 
-            gameStarted = data.started; 
+            gameStarted = data.started;
+            isPaused = data.paused;
         }
     });
     requestAnimationFrame(gameLoop);
@@ -96,12 +120,26 @@ function setupLoops() {
 function sendStartSignal() {
     gameStarted = true;
     document.getElementById('hostControls').style.display = 'none';
-    displayId.classList.replace('id-large', 'id-small');
-    setInterval(() => { if(conn && conn.open) conn.send({ type: 'START' }); }, 500);
+    setInterval(() => { if(conn && conn.open && !isPaused) conn.send({ type: 'START' }); }, 800);
 }
 
+function resumeGame() {
+    isPaused = false;
+    resumeBtn.style.display = 'none';
+    if(conn && conn.open) conn.send({ type: 'START' });
+}
+
+document.addEventListener('visibilitychange', () => {
+    if (document.hidden && isHost && gameStarted) {
+        isPaused = true;
+        if(conn && conn.open) conn.send({ type: 'PAUSE' });
+    } else if (!document.hidden && isHost && gameStarted) {
+        resumeBtn.style.display = 'block';
+    }
+});
+
 canvas.addEventListener('touchmove', e => {
-    e.preventDefault();
+    if (isPaused || !gameStarted) return;
     const rect = canvas.getBoundingClientRect();
     const t = e.touches[0];
     const x = (t.clientX - rect.left) * (400 / rect.width);
@@ -111,13 +149,12 @@ canvas.addEventListener('touchmove', e => {
 }, {passive: false});
 
 function update() {
-    if (!isHost || !gameStarted) return;
+    if (!isHost || !gameStarted || isPaused) return;
+    if (Date.now() - lastPacketTime > 5000) { isPaused = true; return; }
+
     game.ball.x += game.ball.vx; game.ball.y += game.ball.vy;
-    
-    // Стенки
     if (game.ball.x < 15 || game.ball.x > 385) { game.ball.vx *= -1; game.ball.x = game.ball.x < 15 ? 15 : 385; }
     
-    // Ворота и горизонтальные борта
     if (game.ball.y < 5 || game.ball.y > 595) {
         if (game.ball.x > 130 && game.ball.x < 270) {
             if (game.ball.y < -15 || game.ball.y > 615) {
@@ -135,29 +172,25 @@ function update() {
         if (d < 38) {
             let angle = Math.atan2(dy, dx);
             let speed = Math.sqrt(game.ball.vx**2 + game.ball.vy**2) + 2;
-            game.ball.vx = Math.cos(angle) * Math.min(speed, 12);
-            game.ball.vy = Math.sin(angle) * Math.min(speed, 12);
+            game.ball.vx = Math.cos(angle) * Math.min(speed, 11);
+            game.ball.vy = Math.sin(angle) * Math.min(speed, 11);
             game.ball.x = p.x + Math.cos(angle) * 39;
             game.ball.y = p.y + Math.sin(angle) * 39;
         }
     });
     game.ball.vx *= 0.985; game.ball.vy *= 0.985;
-    if (conn && conn.open) conn.send({ state: game, started: gameStarted });
+    if (conn && conn.open) conn.send({ state: game, started: gameStarted, paused: isPaused });
 }
 
 function draw() {
     const s = skins[game.skin] || skins[0];
     ctx.fillStyle = s.bg; ctx.fillRect(0, 0, 400, 600);
     
-    // Разметка
     ctx.strokeStyle = s.line; ctx.lineWidth = 2;
     ctx.beginPath(); ctx.arc(200, 300, 40, 0, 7); ctx.stroke();
     ctx.beginPath(); ctx.moveTo(0, 300); ctx.lineTo(400, 300); ctx.stroke();
-    
-    // Борта
     ctx.strokeStyle = s.wall; ctx.lineWidth = 6; ctx.strokeRect(3, 3, 394, 594);
     
-    // Ворота
     ctx.lineWidth = 10; ctx.lineCap = "round"; ctx.strokeStyle = s.goal;
     if(s.glow) { ctx.shadowBlur = s.glow; ctx.shadowColor = s.goal; }
     ctx.beginPath(); ctx.moveTo(130, 5); ctx.lineTo(270, 5); ctx.stroke();
@@ -176,17 +209,16 @@ function draw() {
     ctx.fillStyle = s.ball; ctx.beginPath(); ctx.arc(bPos.x, bPos.y, 12, 0, 7); ctx.fill();
     ctx.shadowBlur = 0;
 
-    // Оверлей ожидания (без мерцания)
-    if (!gameStarted || (!isHost && !dataReceived)) {
-        ctx.fillStyle = "rgba(0,0,0,0.8)"; ctx.fillRect(0,0,400,600);
-        ctx.fillStyle = "#fff"; ctx.font = "24px Arial"; ctx.textAlign = "center";
-        let msg = isHost ? dict[lang].press : dict[lang].wait;
+    const timeSinceLastPacket = Date.now() - lastPacketTime;
+    if (!gameStarted || isPaused || (!isHost && timeSinceLastPacket > 3000)) {
+        ctx.fillStyle = "rgba(0,0,0,0.7)"; ctx.fillRect(0,0,400,600);
+        ctx.fillStyle = "#fff"; ctx.font = "22px Arial"; ctx.textAlign = "center";
+        let msg = (!gameStarted) ? (isHost ? dict[lang].press : dict[lang].wait) : dict[lang].wait;
         ctx.fillText(msg, 200, 300);
     }
 }
 
 function gameLoop() { 
-    update(); 
-    draw(); 
+    update(); draw(); 
     if (conn && conn.open) requestAnimationFrame(gameLoop); 
 }
