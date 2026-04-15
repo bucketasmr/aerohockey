@@ -1,164 +1,51 @@
-const canvas = document.getElementById('gameCanvas');
-const ctx = canvas.getContext('2d');
-const scoreDisplay = document.getElementById('scoreDisplay');
-const statusEl = document.getElementById('status');
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>Air Hockey Global ULTRA</title>
+    <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
+    <style>
+        :root { --safe-top: env(safe-area-inset-top); }
+        body { background: #000; color: #fff; text-align: center; font-family: -apple-system, sans-serif; margin: 0; overflow: hidden; touch-action: none; user-select: none; height: 100vh; }
+        #menu { padding-top: calc(60px + var(--safe-top)); height: 100%; display: flex; flex-direction: column; align-items: center; background: radial-gradient(circle at center, #111 0%, #000 100%); }
+        .btn { padding: 16px 40px; font-size: 18px; cursor: pointer; margin: 10px; border: none; border-radius: 50px; background: #007aff; color: white; font-weight: bold; box-shadow: 0 4px 15px rgba(0,122,255,0.4); text-transform: uppercase; -webkit-appearance: none; }
+        #resumeBtn { background: #34c759; display: none; position: absolute; z-index: 2000; top: 50%; left: 50%; transform: translate(-50%, -50%); border: 4px solid #fff; scale: 1.2; }
+        input { padding: 14px; font-size: 18px; border-radius: 12px; border: 2px solid #444; background: #222; color: #fff; text-align: center; width: 180px; margin: 10px; }
+        #status { font-size: 14px; color: #007aff; margin: 15px; font-weight: bold; }
+        #gameUI { display: none; flex-direction: column; height: 100%; padding-top: var(--safe-top); }
+        canvas { background: #000; border: 3px solid #333; border-radius: 15px; max-height: 60vh; max-width: 95vw; box-shadow: 0 0 20px rgba(0,0,0,0.5); }
+        .score { font-size: 48px; font-weight: 900; margin: 10px 0; font-family: 'Courier New', monospace; color: #34c759; }
+        .host-controls { display: none; margin: 10px 0; }
+        #roomCodeDisplay { font-size: 12px; opacity: 0.5; margin-bottom: 5px; }
+    </style>
+</head>
+<body>
+    <button id="resumeBtn" class="btn" onclick="resumeGame()">ПРОДОЛЖИТЬ</button>
 
-let peer, conn, isHost = false, gameStarted = false;
-let lastPacketTime = Date.now();
-let game = { p1: { x: 200, y: 530 }, p2: { x: 200, y: 70 }, ball: { x: 200, y: 300, vx: 0, vy: 0 }, s1: 0, s2: 0 };
+    <div id="menu">
+        <h1 style="margin-bottom: 5px;">AIR HOCKEY FX</h1>
+        <div id="status">ЗАГРУЗКА...</div>
+        <div id="setup" style="display:none;">
+            <button class="btn" onclick="createRoom()">СОЗДАТЬ</button>
+            <div style="margin: 20px 0; opacity: 0.3;">ИЛИ</div>
+            <input type="text" id="joinId" placeholder="КОД" maxlength="5">
+            <button class="btn" style="background: #5856d6;" onclick="joinRoom()">ВОЙТИ</button>
+        </div>
+    </div>
 
-// МАКСИМАЛЬНО СТАБИЛЬНЫЕ НАСТРОЙКИ ДЛЯ США-УКРАИНА
-const peerConfig = {
-    debug: 1,
-    pingInterval: 2000, // Частое подтверждение связи
-    config: {
-        'iceServers': [
-            { urls: 'stun:stun.l.google.com:19302' },
-            { urls: 'stun:stun1.l.google.com:19302' },
-            { urls: 'turn:openrelay.metered.ca:443', username: 'openrelayproject', credential: 'openrelayproject' }
-        ],
-        'iceCandidatePoolSize': 10
-    }
-};
-
-function init() {
-    peer = new Peer(peerConfig);
-    peer.on('open', () => {
-        if (statusEl) statusEl.innerText = "СЕТЬ ГОТОВА";
-        document.getElementById('setupActions').style.display = 'block';
-    });
-    peer.on('error', (err) => {
-        console.error(err);
-        if (statusEl) statusEl.innerText = "Сбой: " + err.type;
-        if (err.type === 'network' || err.type === 'server-error') setTimeout(init, 2000);
-    });
-}
-init();
-
-function createRoom() {
-    isHost = true;
-    const id = Math.random().toString(36).substring(2, 7).toUpperCase();
-    peer.destroy();
-    setTimeout(() => {
-        peer = new Peer(id, peerConfig);
-        peer.on('open', resId => {
-            document.getElementById('menu').style.display = 'none';
-            document.getElementById('gameUI').style.display = 'flex';
-            document.getElementById('displayId').innerText = "КОД: " + resId;
-        });
-        peer.on('connection', c => {
-            conn = c;
-            setupEvents();
-        });
-    }, 500);
-}
-
-function joinRoom() {
-    const id = document.getElementById('joinId').value.toUpperCase().trim();
-    if(!id) return;
-    isHost = false;
-    peer.destroy();
-    setTimeout(() => {
-        peer = new Peer(peerConfig);
-        peer.on('open', () => {
-            // Увеличиваем надежность за счет надежного канала (reliable: true)
-            conn = peer.connect(id, { reliable: true, connectionPriority: 'high' });
-            conn.on('open', () => {
-                document.getElementById('menu').style.display = 'none';
-                document.getElementById('gameUI').style.display = 'flex';
-                document.getElementById('displayId').innerText = "В ИГРЕ";
-                setupEvents();
-            });
-        });
-    }, 500);
-}
-
-function setupEvents() {
-    conn.on('data', data => {
-        lastPacketTime = Date.now();
-        if (data === 'START') gameStarted = true;
-        if (isHost) {
-            if (data.x !== undefined) { game.p2.x = data.x; game.p2.y = 600 - data.y; }
-        } else {
-            if (data.g) game = data.g;
-            gameStarted = data.s;
-        }
-    });
-    requestAnimationFrame(gameLoop);
-}
-
-function sendStartSignal() {
-    gameStarted = true;
-    document.getElementById('hostControls').style.display = 'none';
-    const startInt = setInterval(() => {
-        if (conn && conn.open) conn.send('START');
-        else clearInterval(startInt);
-    }, 1000);
-}
-
-canvas.addEventListener('touchmove', e => {
-    e.preventDefault();
-    const rect = canvas.getBoundingClientRect();
-    const t = e.touches[0];
-    const x = (t.clientX - rect.left) * (400 / rect.width);
-    const y = (t.clientY - rect.top) * (600 / rect.height);
-    if (isHost) { game.p1.x = x; game.p1.y = Math.max(320, y); }
-    else if (conn && conn.open) conn.send({ x: x, y: y });
-}, { passive: false });
-
-function update() {
-    if (!isHost || !gameStarted) return;
-    
-    // Проверка на лаг (5 секунд тишины — пауза)
-    if (Date.now() - lastPacketTime > 5000 && conn && conn.open) return;
-
-    game.ball.x += game.ball.vx; game.ball.y += game.ball.vy;
-    if (game.ball.x < 15 || game.ball.x > 385) game.ball.vx *= -1;
-    if (game.ball.y < 5 || game.ball.y > 595) {
-        if (game.ball.x > 130 && game.ball.x < 270) {
-            if (game.ball.y < 0) game.s2++; else game.s1++;
-            game.ball = { x: 200, y: 300, vx: 0, vy: 0 };
-        } else { game.ball.vy *= -1; }
-    }
-
-    [game.p1, game.p2].forEach(p => {
-        let dx = game.ball.x - p.x, dy = game.ball.y - p.y, d = Math.sqrt(dx*dx+dy*dy);
-        if (d < 38) {
-            game.ball.vx = (game.ball.x - p.x) * 0.25;
-            game.ball.vy = (game.ball.y - p.y) * 0.25;
-        }
-    });
-    game.ball.vx *= 0.985; game.ball.vy *= 0.985;
-    
-    if (conn && conn.open) {
-        conn.send({ g: game, s: gameStarted });
-    }
-}
-
-function draw() {
-    ctx.fillStyle = "#111"; ctx.fillRect(0, 0, 400, 600);
-    ctx.strokeStyle = "#444"; ctx.lineWidth = 2;
-    ctx.strokeRect(5, 5, 390, 590);
-    ctx.beginPath(); ctx.moveTo(0, 300); ctx.lineTo(400, 300); ctx.stroke();
-    
-    scoreDisplay.innerText = isHost ? `${game.s1} : ${game.s2}` : `${game.s2} : ${game.s1}`;
-
-    let p1Disp = isHost ? game.p1 : { x: game.p2.x, y: 600 - game.p2.y };
-    let p2Disp = isHost ? game.p2 : { x: game.p1.x, y: 600 - game.p1.y };
-    let bDisp = { x: game.ball.x, y: isHost ? game.ball.y : 600 - game.ball.y };
-
-    ctx.fillStyle = "#007aff"; ctx.beginPath(); ctx.arc(p1Disp.x, p1Disp.y, 25, 0, 7); ctx.fill();
-    ctx.fillStyle = "#ff3b30"; ctx.beginPath(); ctx.arc(p2Disp.x, p2Disp.y, 25, 0, 7); ctx.fill();
-    ctx.fillStyle = "#fff"; ctx.beginPath(); ctx.arc(bDisp.x, bDisp.y, 12, 0, 7); ctx.fill();
-
-    if (!gameStarted) {
-        ctx.fillStyle = "rgba(0,0,0,0.6)"; ctx.fillRect(0,0,400,600);
-        ctx.fillStyle = "#fff"; ctx.font = "20px Arial"; ctx.textAlign = "center";
-        ctx.fillText(isHost ? "НАЖМИТЕ СТАРТ" : "ЖДЕМ ХОСТА...", 200, 300);
-    }
-}
-
-function gameLoop() { 
-    update(); draw(); 
-    requestAnimationFrame(gameLoop); 
-}
+    <div id="gameUI">
+        <div class="score" id="scoreDisplay">0 : 0</div>
+        <div id="roomCodeDisplay">...</div>
+        <div class="host-controls" id="hostUI">
+            <select id="skinSelect" onchange="changeSkin(this.value)" style="padding: 5px; border-radius: 5px;">
+                <option value="0">Classic</option><option value="1">Neon</option><option value="2">Retro</option>
+                <option value="3">Stadium</option><option value="6">Lava</option><option value="8">Cyber</option>
+            </select>
+            <button class="btn" onclick="startGame()" style="padding: 10px 25px; font-size: 14px;">СТАРТ</button>
+        </div>
+        <canvas id="gameCanvas" width="400" height="600"></canvas>
+    </div>
+    <script src="game.js"></script>
+</body>
+</html>
