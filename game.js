@@ -52,7 +52,7 @@ function createRoom() {
         peer.on('open', resId => {
             document.getElementById('menu').style.display = 'none';
             document.getElementById('gameUI').style.display = 'flex';
-            document.getElementById('displayId').innerText = "ID: " + resId;
+            document.getElementById('displayId').innerText = resId;
         });
         peer.on('connection', c => {
             conn = c;
@@ -75,7 +75,7 @@ function joinRoom() {
             conn.on('open', () => {
                 document.getElementById('menu').style.display = 'none';
                 document.getElementById('gameUI').style.display = 'flex';
-                document.getElementById('displayId').innerText = "ID: " + id;
+                document.getElementById('displayId').innerText = id;
                 setupLoops();
             });
         });
@@ -84,7 +84,7 @@ function joinRoom() {
 
 function setupLoops() {
     conn.on('data', data => {
-        lastPacketTime = Date.now();
+        lastPacketTime = Date.now(); // Обновляем время последнего пакета
         if (data.type === 'START') { gameStarted = true; isPaused = false; resumeBtn.style.display = 'none'; }
         if (data.type === 'PAUSE') { isPaused = true; }
         
@@ -102,7 +102,7 @@ function setupLoops() {
 function sendStartSignal() {
     gameStarted = true;
     document.getElementById('hostControls').style.display = 'none';
-    setInterval(() => { if(conn && conn.open && !isPaused) conn.send({ type: 'START' }); }, 1000);
+    setInterval(() => { if(conn && conn.open) conn.send({ type: 'START' }); }, 1000);
 }
 
 function resumeGame() {
@@ -111,12 +111,13 @@ function resumeGame() {
     if(conn && conn.open) conn.send({ type: 'START' });
 }
 
+// Детектор ухода со страницы
 document.addEventListener('visibilitychange', () => {
     if (document.hidden && isHost && gameStarted) {
         isPaused = true;
         if(conn && conn.open) conn.send({ type: 'PAUSE' });
     } else if (!document.hidden && isHost && gameStarted) {
-        resumeBtn.style.display = 'block';
+        resumeBtn.style.display = 'block'; // Показываем кнопку хосту при возврате
     }
 });
 
@@ -133,12 +134,14 @@ canvas.addEventListener('touchmove', e => {
 function update() {
     if (!isHost || !gameStarted || isPaused) return;
     
-    // Если клиент залагал более чем на 5 сек
-    if (Date.now() - lastPacketTime > 5000) { isPaused = true; return; }
+    // Проверка на лаг (если клиент не шлет данные 5 сек)
+    if (Date.now() - lastPacketTime > 5000) {
+        isPaused = true;
+        return;
+    }
 
     game.ball.x += game.ball.vx; game.ball.y += game.ball.vy;
     if (game.ball.x < 15 || game.ball.x > 385) { game.ball.vx *= -1; game.ball.x = game.ball.x < 15 ? 15 : 385; }
-    
     if (game.ball.y < 5 || game.ball.y > 595) {
         if (game.ball.x > 130 && game.ball.x < 270) {
             if (game.ball.y < -15 || game.ball.y > 615) {
@@ -173,15 +176,11 @@ function draw() {
     ctx.strokeStyle = s.line; ctx.lineWidth = 2;
     ctx.beginPath(); ctx.arc(200, 300, 40, 0, 7); ctx.stroke();
     ctx.beginPath(); ctx.moveTo(0, 300); ctx.lineTo(400, 300); ctx.stroke();
-    
     ctx.strokeStyle = s.wall; ctx.lineWidth = 6; ctx.strokeRect(3, 3, 394, 594);
     
-    // Ворота
     ctx.lineWidth = 10; ctx.lineCap = "round"; ctx.strokeStyle = s.goal;
-    if(s.glow) { ctx.shadowBlur = s.glow; ctx.shadowColor = s.goal; }
     ctx.beginPath(); ctx.moveTo(130, 5); ctx.lineTo(270, 5); ctx.stroke();
     ctx.beginPath(); ctx.moveTo(130, 595); ctx.lineTo(270, 595); ctx.stroke();
-    ctx.shadowBlur = 0;
 
     scoreDisplay.innerText = isHost ? `${game.score1} : ${game.score2}` : `${game.score2} : ${game.score1}`;
     
@@ -195,10 +194,11 @@ function draw() {
     ctx.fillStyle = s.ball; ctx.beginPath(); ctx.arc(bPos.x, bPos.y, 12, 0, 7); ctx.fill();
     ctx.shadowBlur = 0;
 
+    // ЛОГИКА ОВЕРЛЕЯ
     const timeSinceLastPacket = Date.now() - lastPacketTime;
     
-    // Показываем оверлей только если игра не начата, на паузе или лаг > 5 сек
-    if (!gameStarted || isPaused || (!isHost && timeSinceLastPacket > 5000)) {
+    // Показываем "Ждем", только если пауза ИЛИ если задержка более 5 секунд
+    if (!gameStarted || isPaused || timeSinceLastPacket > 5000) {
         ctx.fillStyle = "rgba(0,0,0,0.7)";
         ctx.fillRect(0,0,400,600);
         ctx.fillStyle = "#fff";
@@ -207,7 +207,7 @@ function draw() {
         
         let msg = "";
         if (!gameStarted) msg = isHost ? dict[lang].press : dict[lang].wait;
-        else msg = dict[lang].wait;
+        else if (isPaused || timeSinceLastPacket > 5000) msg = dict[lang].wait;
         
         ctx.fillText(msg, 200, 300);
     }
