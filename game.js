@@ -2,16 +2,29 @@ const canvas = document.getElementById('gameCanvas');
 const ctx = canvas.getContext('2d');
 const scoreDisplay = document.getElementById('scoreDisplay');
 const resumeBtn = document.getElementById('resumeBtn');
+const statusEl = document.getElementById('status');
 
 let peer, conn, isHost = false, gameStarted = false;
 let lastPacketTime = Date.now();
 let isPaused = false;
 let lang = localStorage.getItem('gameLang') || 'ru';
 
-const dict = {
-    ru: { loading: "СЕТЬ ГОТОВА", create: "СОЗДАТЬ", join: "ВОЙТИ", start: "СТАРТ", wait: "ЖДЕМ ХОСТА...", press: "ЖМИ СТАРТ" },
-    uk: { loading: "МЕРЕЖА ГОТОВА", create: "СТВОРИТИ", join: "УВІЙТИ", start: "СТАРТ", wait: "ЧЕКАЄМО ХОСТА...", press: "ТИСНИ СТАРТ" },
-    en: { loading: "NETWORK READY", create: "CREATE", join: "JOIN", start: "START", wait: "WAITING HOST...", press: "PRESS START" }
+// Настройки для транс-атлантического соединения (Украина - США)
+const peerOptions = {
+    debug: 1,
+    config: {
+        'iceServers': [
+            { url: 'stun:stun.l.google.com:19302' },
+            { url: 'stun:stun1.l.google.com:19302' },
+            { url: 'stun:stun2.l.google.com:19302' },
+            { url: 'stun:stun3.l.google.com:19302' },
+            { url: 'stun:stun.ekiga.net' },
+            { url: 'stun:stun.ideasip.com' },
+            { url: 'stun:stun.voiparound.com' },
+            { url: 'stun:stun.voipbuster.com' }
+        ],
+        'iceCandidatePoolSize': 10
+    }
 };
 
 const skins = [
@@ -28,36 +41,20 @@ const skins = [
 
 let game = { p1: { x: 200, y: 530 }, p2: { x: 200, y: 70 }, ball: { x: 200, y: 300, vx: 0, vy: 0 }, score1: 0, score2: 0, skin: 0 };
 
-// Настройки для пробития VPN между Украиной и США
-const peerOptions = {
-    config: {
-        'iceServers': [
-            { url: 'stun:stun.l.google.com:19302' },
-            { url: 'stun:stun1.l.google.com:19302' },
-            { url: 'stun:stun2.l.google.com:19302' },
-            { url: 'stun:stun3.l.google.com:19302' },
-            { url: 'stun:stun.ekiga.net' },
-            { url: 'stun:stun.ideasip.com' }
-        ]
-    }
-};
-
 function initPeer() {
+    statusEl.innerText = "Подключение к глобальной сети...";
     peer = new Peer(peerOptions);
     peer.on('open', () => {
-        document.getElementById('status').innerText = dict[lang].loading;
+        statusEl.innerText = "Готов к игре";
         document.getElementById('setupActions').style.display = 'block';
-        applyTranslation();
     });
-    peer.on('error', (err) => { console.error(err); initPeer(); });
+    peer.on('error', (err) => {
+        console.error(err);
+        statusEl.innerText = "Ошибка сети. Проверьте интернет.";
+    });
 }
-
 initPeer();
 
-function applyTranslation() {
-    document.querySelectorAll('[data-i18n]').forEach(el => el.innerText = dict[lang][el.getAttribute('data-i18n')]);
-}
-function changeLanguage(v) { lang = v; localStorage.setItem('gameLang', v); applyTranslation(); }
 function changeSkin(v) { if(isHost) game.skin = parseInt(v); }
 
 function createRoom() {
@@ -69,7 +66,7 @@ function createRoom() {
         peer.on('open', resId => {
             document.getElementById('menu').style.display = 'none';
             document.getElementById('gameUI').style.display = 'flex';
-            document.getElementById('displayId').innerText = "ID: " + resId;
+            document.getElementById('displayId').innerText = "ВАШ КОД: " + resId;
         });
         peer.on('connection', c => {
             conn = c;
@@ -85,17 +82,21 @@ function joinRoom() {
     const id = document.getElementById('joinId').value.toUpperCase().trim();
     if(!id) return;
     isHost = false;
+    statusEl.innerText = "Поиск комнаты " + id + "...";
     peer.destroy();
     setTimeout(() => {
         peer = new Peer(peerOptions);
         peer.on('open', () => {
-            conn = peer.connect(id, { reliable: false });
+            conn = peer.connect(id, { reliable: true, serialization: 'json' });
             conn.on('open', () => {
                 document.getElementById('menu').style.display = 'none';
                 document.getElementById('gameUI').style.display = 'flex';
-                document.getElementById('displayId').innerText = "CONNECTED TO: " + id;
+                document.getElementById('displayId').innerText = "ПОДКЛЮЧЕНО К: " + id;
                 setupLoops();
             });
+            setTimeout(() => {
+                if(!conn.open) statusEl.innerText = "Не удалось найти комнату. Попробуйте снова.";
+            }, 7000);
         });
     }, 300);
 }
@@ -105,14 +106,8 @@ function setupLoops() {
         lastPacketTime = Date.now();
         if (data.type === 'START') { gameStarted = true; isPaused = false; resumeBtn.style.display = 'none'; }
         if (data.type === 'PAUSE') { isPaused = true; }
-        
-        if (isHost) { 
-            if(data.x) { game.p2.x = data.x; game.p2.y = 600 - data.y; } 
-        } else { 
-            if(data.state) game = data.state; 
-            gameStarted = data.started;
-            isPaused = data.paused;
-        }
+        if (isHost) { if(data.x) { game.p2.x = data.x; game.p2.y = 600 - data.y; } } 
+        else { if(data.state) game = data.state; gameStarted = data.started; isPaused = data.paused; }
     });
     requestAnimationFrame(gameLoop);
 }
@@ -120,7 +115,7 @@ function setupLoops() {
 function sendStartSignal() {
     gameStarted = true;
     document.getElementById('hostControls').style.display = 'none';
-    setInterval(() => { if(conn && conn.open && !isPaused) conn.send({ type: 'START' }); }, 800);
+    setInterval(() => { if(conn && conn.open && !isPaused) conn.send({ type: 'START' }); }, 1000);
 }
 
 function resumeGame() {
@@ -154,17 +149,13 @@ function update() {
 
     game.ball.x += game.ball.vx; game.ball.y += game.ball.vy;
     if (game.ball.x < 15 || game.ball.x > 385) { game.ball.vx *= -1; game.ball.x = game.ball.x < 15 ? 15 : 385; }
-    
     if (game.ball.y < 5 || game.ball.y > 595) {
         if (game.ball.x > 130 && game.ball.x < 270) {
             if (game.ball.y < -15 || game.ball.y > 615) {
                 if (game.ball.y < 0) game.score2++; else game.score1++;
                 game.ball = { x: 200, y: 300, vx: 0, vy: 0 };
             }
-        } else {
-            game.ball.vy *= -1;
-            game.ball.y = game.ball.y < 5 ? 5 : 595;
-        }
+        } else { game.ball.vy *= -1; game.ball.y = game.ball.y < 5 ? 5 : 595; }
     }
 
     [game.p1, game.p2].forEach(p => {
@@ -185,35 +176,28 @@ function update() {
 function draw() {
     const s = skins[game.skin] || skins[0];
     ctx.fillStyle = s.bg; ctx.fillRect(0, 0, 400, 600);
-    
     ctx.strokeStyle = s.line; ctx.lineWidth = 2;
     ctx.beginPath(); ctx.arc(200, 300, 40, 0, 7); ctx.stroke();
     ctx.beginPath(); ctx.moveTo(0, 300); ctx.lineTo(400, 300); ctx.stroke();
     ctx.strokeStyle = s.wall; ctx.lineWidth = 6; ctx.strokeRect(3, 3, 394, 594);
-    
     ctx.lineWidth = 10; ctx.lineCap = "round"; ctx.strokeStyle = s.goal;
-    if(s.glow) { ctx.shadowBlur = s.glow; ctx.shadowColor = s.goal; }
     ctx.beginPath(); ctx.moveTo(130, 5); ctx.lineTo(270, 5); ctx.stroke();
     ctx.beginPath(); ctx.moveTo(130, 595); ctx.lineTo(270, 595); ctx.stroke();
-    ctx.shadowBlur = 0;
 
     scoreDisplay.innerText = isHost ? `${game.score1} : ${game.score2}` : `${game.score2} : ${game.score1}`;
-    
     let my = isHost ? game.p1 : {x: game.p2.x, y: 600 - game.p2.y};
     let op = isHost ? game.p2 : {x: game.p1.x, y: 600 - game.p1.y};
     let bPos = { x: game.ball.x, y: isHost ? game.ball.y : 600 - game.ball.y };
 
-    if(s.glow) { ctx.shadowBlur = s.glow; ctx.shadowColor = s.wall; }
     ctx.fillStyle = s.p1; ctx.beginPath(); ctx.arc(my.x, my.y, 25, 0, 7); ctx.fill();
     ctx.fillStyle = s.p2; ctx.beginPath(); ctx.arc(op.x, op.y, 25, 0, 7); ctx.fill();
     ctx.fillStyle = s.ball; ctx.beginPath(); ctx.arc(bPos.x, bPos.y, 12, 0, 7); ctx.fill();
-    ctx.shadowBlur = 0;
 
     const timeSinceLastPacket = Date.now() - lastPacketTime;
-    if (!gameStarted || isPaused || (!isHost && timeSinceLastPacket > 3000)) {
+    if (!gameStarted || isPaused || (!isHost && timeSinceLastPacket > 4000)) {
         ctx.fillStyle = "rgba(0,0,0,0.7)"; ctx.fillRect(0,0,400,600);
-        ctx.fillStyle = "#fff"; ctx.font = "22px Arial"; ctx.textAlign = "center";
-        let msg = (!gameStarted) ? (isHost ? dict[lang].press : dict[lang].wait) : dict[lang].wait;
+        ctx.fillStyle = "#fff"; ctx.font = "20px Arial"; ctx.textAlign = "center";
+        let msg = (!gameStarted) ? (isHost ? "ЖМИ СТАРТ" : "ОЖИДАНИЕ ХОСТА...") : "СВЯЗЬ ПРЕРВАНА...";
         ctx.fillText(msg, 200, 300);
     }
 }
