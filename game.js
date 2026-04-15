@@ -1,11 +1,10 @@
 const canvas = document.getElementById('gameCanvas');
 const ctx = canvas.getContext('2d');
 const scoreDisplay = document.getElementById('scoreDisplay');
-const resumeBtn = document.getElementById('resumeBtn');
+const displayId = document.getElementById('displayId');
 
 let peer, conn, isHost = false, gameStarted = false;
-let lastPacketTime = Date.now();
-let isPaused = false;
+let dataReceived = false; // Флаг для предотвращения мерцания "Wait"
 let lang = localStorage.getItem('gameLang') || 'ru';
 
 const dict = {
@@ -39,6 +38,7 @@ peer.on('open', () => {
 
 function applyTranslation() {
     document.querySelectorAll('[data-i18n]').forEach(el => el.innerText = dict[lang][el.getAttribute('data-i18n')]);
+    document.getElementById('langSelect').value = lang;
 }
 function changeLanguage(v) { lang = v; localStorage.setItem('gameLang', v); applyTranslation(); }
 function changeSkin(v) { if(isHost) game.skin = parseInt(v); }
@@ -49,11 +49,7 @@ function createRoom() {
     peer.destroy();
     setTimeout(() => {
         peer = new Peer(id, peerOptions);
-        peer.on('open', resId => {
-            document.getElementById('menu').style.display = 'none';
-            document.getElementById('gameUI').style.display = 'flex';
-            document.getElementById('displayId').innerText = resId;
-        });
+        peer.on('open', resId => showUI(resId));
         peer.on('connection', c => {
             conn = c;
             conn.on('open', () => {
@@ -72,28 +68,26 @@ function joinRoom() {
         peer = new Peer(peerOptions);
         peer.on('open', () => {
             conn = peer.connect(id, { reliable: false });
-            conn.on('open', () => {
-                document.getElementById('menu').style.display = 'none';
-                document.getElementById('gameUI').style.display = 'flex';
-                document.getElementById('displayId').innerText = id;
-                setupLoops();
-            });
+            conn.on('open', () => { showUI(id); setupLoops(); });
         });
     }, 300);
 }
 
+function showUI(id) {
+    document.getElementById('menu').style.display = 'none';
+    document.getElementById('gameUI').style.display = 'flex';
+    displayId.innerText = id;
+}
+
 function setupLoops() {
     conn.on('data', data => {
-        lastPacketTime = Date.now(); // Обновляем время последнего пакета
-        if (data.type === 'START') { gameStarted = true; isPaused = false; resumeBtn.style.display = 'none'; }
-        if (data.type === 'PAUSE') { isPaused = true; }
-        
+        dataReceived = true; // Данные пошли, убираем надпись "Wait"
+        if (data.type === 'START') gameStarted = true;
         if (isHost) { 
             if(data.x) { game.p2.x = data.x; game.p2.y = 600 - data.y; } 
         } else { 
             if(data.state) game = data.state; 
-            gameStarted = data.started;
-            isPaused = data.paused;
+            gameStarted = data.started; 
         }
     });
     requestAnimationFrame(gameLoop);
@@ -102,27 +96,12 @@ function setupLoops() {
 function sendStartSignal() {
     gameStarted = true;
     document.getElementById('hostControls').style.display = 'none';
-    setInterval(() => { if(conn && conn.open) conn.send({ type: 'START' }); }, 1000);
+    displayId.classList.replace('id-large', 'id-small');
+    setInterval(() => { if(conn && conn.open) conn.send({ type: 'START' }); }, 500);
 }
-
-function resumeGame() {
-    isPaused = false;
-    resumeBtn.style.display = 'none';
-    if(conn && conn.open) conn.send({ type: 'START' });
-}
-
-// Детектор ухода со страницы
-document.addEventListener('visibilitychange', () => {
-    if (document.hidden && isHost && gameStarted) {
-        isPaused = true;
-        if(conn && conn.open) conn.send({ type: 'PAUSE' });
-    } else if (!document.hidden && isHost && gameStarted) {
-        resumeBtn.style.display = 'block'; // Показываем кнопку хосту при возврате
-    }
-});
 
 canvas.addEventListener('touchmove', e => {
-    if (isPaused || !gameStarted) return;
+    e.preventDefault();
     const rect = canvas.getBoundingClientRect();
     const t = e.touches[0];
     const x = (t.clientX - rect.left) * (400 / rect.width);
@@ -132,16 +111,13 @@ canvas.addEventListener('touchmove', e => {
 }, {passive: false});
 
 function update() {
-    if (!isHost || !gameStarted || isPaused) return;
-    
-    // Проверка на лаг (если клиент не шлет данные 5 сек)
-    if (Date.now() - lastPacketTime > 5000) {
-        isPaused = true;
-        return;
-    }
-
+    if (!isHost || !gameStarted) return;
     game.ball.x += game.ball.vx; game.ball.y += game.ball.vy;
+    
+    // Стенки
     if (game.ball.x < 15 || game.ball.x > 385) { game.ball.vx *= -1; game.ball.x = game.ball.x < 15 ? 15 : 385; }
+    
+    // Ворота и горизонтальные борта
     if (game.ball.y < 5 || game.ball.y > 595) {
         if (game.ball.x > 130 && game.ball.x < 270) {
             if (game.ball.y < -15 || game.ball.y > 615) {
@@ -166,21 +142,27 @@ function update() {
         }
     });
     game.ball.vx *= 0.985; game.ball.vy *= 0.985;
-    if (conn && conn.open) conn.send({ state: game, started: gameStarted, paused: isPaused });
+    if (conn && conn.open) conn.send({ state: game, started: gameStarted });
 }
 
 function draw() {
     const s = skins[game.skin] || skins[0];
     ctx.fillStyle = s.bg; ctx.fillRect(0, 0, 400, 600);
     
+    // Разметка
     ctx.strokeStyle = s.line; ctx.lineWidth = 2;
     ctx.beginPath(); ctx.arc(200, 300, 40, 0, 7); ctx.stroke();
     ctx.beginPath(); ctx.moveTo(0, 300); ctx.lineTo(400, 300); ctx.stroke();
+    
+    // Борта
     ctx.strokeStyle = s.wall; ctx.lineWidth = 6; ctx.strokeRect(3, 3, 394, 594);
     
+    // Ворота
     ctx.lineWidth = 10; ctx.lineCap = "round"; ctx.strokeStyle = s.goal;
+    if(s.glow) { ctx.shadowBlur = s.glow; ctx.shadowColor = s.goal; }
     ctx.beginPath(); ctx.moveTo(130, 5); ctx.lineTo(270, 5); ctx.stroke();
     ctx.beginPath(); ctx.moveTo(130, 595); ctx.lineTo(270, 595); ctx.stroke();
+    ctx.shadowBlur = 0;
 
     scoreDisplay.innerText = isHost ? `${game.score1} : ${game.score2}` : `${game.score2} : ${game.score1}`;
     
@@ -194,26 +176,17 @@ function draw() {
     ctx.fillStyle = s.ball; ctx.beginPath(); ctx.arc(bPos.x, bPos.y, 12, 0, 7); ctx.fill();
     ctx.shadowBlur = 0;
 
-    // ЛОГИКА ОВЕРЛЕЯ
-    const timeSinceLastPacket = Date.now() - lastPacketTime;
-    
-    // Показываем "Ждем", только если пауза ИЛИ если задержка более 5 секунд
-    if (!gameStarted || isPaused || timeSinceLastPacket > 5000) {
-        ctx.fillStyle = "rgba(0,0,0,0.7)";
-        ctx.fillRect(0,0,400,600);
-        ctx.fillStyle = "#fff";
-        ctx.font = "22px Arial";
-        ctx.textAlign = "center";
-        
-        let msg = "";
-        if (!gameStarted) msg = isHost ? dict[lang].press : dict[lang].wait;
-        else if (isPaused || timeSinceLastPacket > 5000) msg = dict[lang].wait;
-        
+    // Оверлей ожидания (без мерцания)
+    if (!gameStarted || (!isHost && !dataReceived)) {
+        ctx.fillStyle = "rgba(0,0,0,0.8)"; ctx.fillRect(0,0,400,600);
+        ctx.fillStyle = "#fff"; ctx.font = "24px Arial"; ctx.textAlign = "center";
+        let msg = isHost ? dict[lang].press : dict[lang].wait;
         ctx.fillText(msg, 200, 300);
     }
 }
 
 function gameLoop() { 
-    update(); draw(); 
+    update(); 
+    draw(); 
     if (conn && conn.open) requestAnimationFrame(gameLoop); 
 }
